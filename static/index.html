@@ -1,0 +1,1666 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DSA Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f0f12;
+      --surface: #18181c;
+      --border: #2a2a30;
+      --text: #e4e4e7;
+      --text-muted: #71717a;
+      --accent: #22d3ee;
+      --accent-dim: #0891b2;
+      --user-bg: #1e3a5f;
+      --bot-bg: #1c1c21;
+      --error: #f87171;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      height: 100vh;
+      font-family: 'Outfit', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      /* allow vertical scroll if content is taller than viewport */
+      overflow-x: hidden;
+    }
+
+    header {
+      flex-shrink: 0;
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    header h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    header span {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .open-problem {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      margin-left: 1rem;
+    }
+
+    .open-problem label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .open-problem input {
+      width: 140px;
+      padding: 0.4rem 0.6rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+    }
+
+    .open-problem input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .open-problem button {
+      padding: 0.4rem 0.75rem;
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 0.85rem;
+    }
+
+    .open-problem button:hover {
+      background: var(--accent-dim);
+    }
+
+    .taskbar {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 1rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: relative;
+      z-index: 100;
+    }
+
+    .taskbar-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .taskbar .btn {
+      padding: 0.4rem 0.75rem;
+      background: var(--border);
+      color: var(--text);
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .taskbar .btn:hover {
+      background: var(--accent-dim);
+      color: var(--bg);
+    }
+
+    .taskbar .btn.accent {
+      background: var(--accent);
+      color: var(--bg);
+    }
+
+    .taskbar .btn.accent:hover {
+      background: var(--accent-dim);
+    }
+
+
+
+    .taskbar-search {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .taskbar-search input {
+      width: 160px;
+      padding: 0.4rem 0.6rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.85rem;
+    }
+
+    .taskbar-search input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .taskbar-search select {
+      padding: 0.4rem 0.5rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    .taskbar-search-results {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      max-height: 220px;
+      overflow-y: auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-top: 0.25rem;
+      z-index: 100;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .taskbar-search-results .result-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      font-size: 0.85rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .taskbar-search-results .result-item:last-child {
+      border-bottom: none;
+    }
+
+    .taskbar-search-results .result-item:hover {
+      background: var(--border);
+    }
+
+    .taskbar-search-results .result-item .diff {
+      font-size: 0.7rem;
+    }
+
+    .taskbar-search-results .result-item .difficulty {
+      display: inline-block;
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 500;
+    }
+
+    .taskbar-search-wrap {
+      position: relative;
+    }
+
+    .three-col {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .panel {
+      display: flex;
+      flex-direction: column;
+      min-width: 150px;
+      overflow: hidden;
+    }
+
+    .gutter {
+      width: 6px;
+      margin: 0 -3px;
+      /* overlap panels slightly for better hit area */
+      background: transparent;
+      cursor: col-resize;
+      flex: 0 0 auto;
+      transition: background 0.2s;
+      z-index: 10;
+      position: relative;
+    }
+
+    .gutter::after {
+      content: '';
+      position: absolute;
+      left: 2px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--border);
+    }
+
+    .gutter:hover::after,
+    .gutter.dragging::after {
+      background: var(--accent);
+      width: 4px;
+      left: 1px;
+    }
+
+    .panel-header {
+      flex-shrink: 0;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+    }
+
+    /* Left: Problem */
+    .panel-problem {
+      flex: 1 1 0%;
+    }
+
+    .problem-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .difficulty {
+      display: inline-block;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      margin-bottom: 0.75rem;
+    }
+
+    .difficulty.Easy {
+      background: rgba(34, 197, 94, 0.2);
+      color: #4ade80;
+    }
+
+    .difficulty.Medium {
+      background: rgba(234, 179, 8, 0.2);
+      color: #facc15;
+    }
+
+    .difficulty.Hard {
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+    }
+
+    .problem-content {
+      line-height: 1.65;
+      font-size: 0.9rem;
+    }
+
+    .problem-content code {
+      background: var(--surface);
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85em;
+    }
+
+    .problem-content pre {
+      background: var(--surface);
+      padding: 0.75rem;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 0.85rem;
+    }
+
+    .examples {
+      margin-top: 1.25rem;
+    }
+
+    .examples h4 {
+      font-size: 0.8rem;
+      margin-bottom: 0.4rem;
+      color: var(--text-muted);
+    }
+
+    .example-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      margin-bottom: 0.5rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* Middle: Code */
+    .panel-code {
+      flex: 1 1 0%;
+    }
+
+    .code-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .code-toolbar .label {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    #run-btn {
+      padding: 0.35rem 0.75rem;
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 0.85rem;
+    }
+
+    #run-btn:hover:not(:disabled) {
+      background: var(--accent-dim);
+    }
+
+    #run-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #code-editor {
+      width: 100%;
+      min-height: 220px;
+      padding: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      resize: vertical;
+      display: block;
+    }
+
+    #code-editor:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    #run-output {
+      margin-top: 0.5rem;
+      padding: 0.75rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      min-height: 60px;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+
+    #run-output.empty {
+      color: var(--text-muted);
+    }
+
+    #run-output.error {
+      border-color: var(--error);
+      color: var(--error);
+    }
+
+    /* Test Results Section */
+    .test-results {
+      margin-top: 1rem;
+      border-top: 1px solid var(--border);
+      padding-top: 1rem;
+    }
+
+    .test-results h4 {
+      font-size: 0.85rem;
+      margin-bottom: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .test-case {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .test-case.passed {
+      border-left: 4px solid #4ade80;
+    }
+
+    .test-case.failed {
+      border-left: 4px solid #f87171;
+    }
+
+    .test-case.executed {
+      border-left: 4px solid #fbbf24;
+    }
+
+    .test-case-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .test-case-status {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .passed .test-case-status {
+      color: #4ade80;
+    }
+
+    .failed .test-case-status {
+      color: #f87171;
+    }
+
+    .executed .test-case-status {
+      color: #fbbf24;
+    }
+
+    .test-case-info {
+      font-size: 0.8rem;
+      line-height: 1.4;
+    }
+
+    .test-case-info div {
+      margin-bottom: 0.25rem;
+    }
+
+    .test-case-info strong {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .test-case-info code {
+      font-family: 'JetBrains Mono', monospace;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 0.1rem 0.3rem;
+      border-radius: 4px;
+    }
+
+    /* Right: Agent */
+    .panel-agent {
+      flex: 1.5 1 0%;
+    }
+
+    .agent-placeholder {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      gap: 0.6rem;
+    }
+
+    .message {
+      padding: 0.6rem 0.85rem;
+      border-radius: 10px;
+      line-height: 1.5;
+      font-size: 0.9rem;
+      max-width: 95%;
+    }
+
+    .message.user {
+      align-self: flex-end;
+      background: var(--user-bg);
+      border: 1px solid rgba(34, 211, 238, 0.2);
+    }
+
+    .message.bot {
+      align-self: flex-start;
+      background: linear-gradient(145deg, #1c1c21, #16161a);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+      position: relative;
+    }
+
+    .message.bot .body {
+      line-height: 1.6;
+    }
+
+    .bot-section {
+      margin-top: 1.25rem;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .bot-section:first-child {
+      margin-top: 0.5rem;
+    }
+
+    .bot-header {
+      background: rgba(34, 211, 238, 0.1);
+      padding: 0.6rem 1rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      border-bottom: 1px solid rgba(34, 211, 238, 0.2);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .bot-header::before {
+      content: '';
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+    }
+
+    .bot-content {
+      padding: 1rem;
+      color: #e2e8f0;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    .message pre {
+      background: rgba(0, 0, 0, 0.4);
+      padding: 0.75rem;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin: 0.5rem 0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .message pre code {
+      background: transparent;
+      padding: 0;
+      color: #f8fafc;
+      border: none;
+    }
+
+    .message code {
+      font-family: 'JetBrains Mono', monospace;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--accent);
+      padding: 0.15rem 0.35rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      border: 1px solid rgba(34, 211, 238, 0.1);
+    }
+
+    .message b,
+    .message strong {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .message ul,
+    .message ol {
+      margin: 0.4rem 0;
+      padding-left: 0;
+    }
+
+    .message li {
+      margin-bottom: 0.15rem;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 0.3rem 0.5rem;
+      border-radius: 6px;
+      list-style: none;
+      border-left: 2px solid var(--accent);
+      font-size: 0.85rem;
+      display: block;
+      line-height: 1.4;
+    }
+
+    .message li:last-child {
+      margin-bottom: 0;
+    }
+
+
+    .btn-small {
+      padding: 0.3rem 0.6rem;
+      font-size: 0.75rem;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-small:hover {
+      background: var(--border);
+      border-color: var(--accent);
+    }
+
+    .btn-small.accent {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .analyzing-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--accent);
+      font-style: italic;
+    }
+
+    .analyzing-pulse {
+      width: 8px;
+      height: 8px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        transform: scale(1);
+        opacity: 1;
+      }
+
+      50% {
+        transform: scale(1.5);
+        opacity: 0.5;
+      }
+
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    .message .role {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+    }
+
+    .message.bot .role {
+      color: var(--accent);
+    }
+
+    .message.error {
+      border-color: var(--error);
+      background: rgba(248, 113, 113, 0.08);
+    }
+
+    #messages .loading {
+      align-self: flex-start;
+      padding: 0.6rem 0.85rem;
+      background: var(--bot-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .loading-dots::after {
+      content: '';
+      animation: dots 1.2s steps(4, end) infinite;
+    }
+
+    @keyframes dots {
+
+      0%,
+      20% {
+        content: '';
+      }
+
+      40% {
+        content: '.';
+      }
+
+      60% {
+        content: '..';
+      }
+
+      80%,
+      100% {
+        content: '...';
+      }
+    }
+
+    #chat-form {
+      flex-shrink: 0;
+      padding: 0.5rem 0.75rem 0.9rem;
+      /* a bit more bottom padding so input is not flush with window edge */
+      border-top: 1px solid var(--border);
+    }
+
+    #chat-form form {
+      display: flex;
+      gap: 0.5rem;
+      align-items: flex-end;
+    }
+
+    #chat-input {
+      flex: 1;
+      min-height: 40px;
+      max-height: 120px;
+      padding: 0.5rem 0.75rem;
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-size: 0.9rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      resize: none;
+    }
+
+    #chat-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    #chat-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    #chat-submit {
+      height: 40px;
+      padding: 0 1rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    #chat-submit:hover:not(:disabled) {
+      background: var(--accent-dim);
+    }
+
+    #chat-submit:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>DSA Agent</h1>
+    <span>Groq + LeetCode MCP</span>
+  </header>
+
+  <div class="taskbar">
+    <span class="taskbar-label">MCP</span>
+    <button type="button" class="btn accent" id="taskbar-daily">Today’s challenge</button>
+    <div class="taskbar-search-wrap">
+      <div class="taskbar-search">
+        <input type="text" id="taskbar-search-input" placeholder="Search problems…" />
+        <select id="taskbar-difficulty">
+          <option value="">Any</option>
+          <option value="EASY">Easy</option>
+          <option value="MEDIUM">Medium</option>
+          <option value="HARD">Hard</option>
+        </select>
+        <button type="button" class="btn" id="taskbar-search-btn">Search</button>
+      </div>
+      <div id="taskbar-search-results" class="taskbar-search-results" style="display: none;"></div>
+    </div>
+  </div>
+
+  <div class="three-col" id="resizable-container">
+    <div class="panel panel-problem" id="panel-problem">
+      <div class="panel-header">Problem</div>
+      <div class="panel-body">
+        <div id="problem-statement">
+          <p style="color: var(--text-muted); font-size: 0.9rem;">Enter a problem slug in the header (e.g. two-sum) and
+            click Go, or ask the agent to open one.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="gutter" id="gutter-1"></div>
+
+    <div class="panel panel-code" id="panel-code">
+      <div class="panel-header">Code</div>
+      <div class="panel-body">
+        <div class="code-toolbar">
+          <span class="label">Python 3</span>
+          <div style="flex: 1; display: flex; gap: 0.5rem; justify-content: flex-end;">
+            <button type="button" id="validate-btn"
+              style="background: var(--bot-bg); color: var(--accent); border: 1px solid var(--accent);">Ask AI to
+              Validate</button>
+            <button type="button" id="run-btn">Run</button>
+            <button type="button" id="submit-btn"
+              style="background: #22c55e; color: white; border: none;">Submit</button>
+          </div>
+        </div>
+        <textarea id="code-editor"
+          placeholder="# Load a problem to get the starter code, or write your solution here."></textarea>
+
+        <div id="test-results-container" class="test-results" style="display: none;">
+          <h4>Test Results</h4>
+          <div id="test-results-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gutter" id="gutter-2"></div>
+
+    <div class="panel panel-agent" id="panel-agent">
+      <div class="panel-header">Agent</div>
+      <main id="messages" role="log" aria-live="polite">
+        <div id="agent-placeholder" class="agent-placeholder">
+          Ask the agent anything about the current problem, approach, or code.
+        </div>
+      </main>
+      <section id="chat-form">
+        <form action="#" method="post" id="chat-form-inner">
+          <textarea id="chat-input" name="message" placeholder="Ask the agent: search problems, get a problem, hints…"
+            rows="1"></textarea>
+          <button type="submit" id="chat-submit">Send</button>
+        </form>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const messagesEl = document.getElementById('messages');
+    const agentForm = document.getElementById('chat-form-inner');
+    const agentInput = document.getElementById('chat-input');
+    const agentSubmitBtn = document.getElementById('chat-submit');
+    const problemStatement = document.getElementById('problem-statement');
+    const codeEditor = document.getElementById('code-editor');
+    const runBtn = document.getElementById('run-btn');
+    const submitBtnAction = document.getElementById('submit-btn');
+    const testResultsContainer = document.getElementById('test-results-container');
+    const testResultsList = document.getElementById('test-results-list');
+
+
+
+    let currentExampleTestcases = "";
+    let currentProblemSlug = "";
+    let currentExpectedOutputs = [];
+    let currentOrderIndependent = false;
+
+    function addMessage(role, text, isError = false) {
+      const placeholder = document.getElementById('agent-placeholder');
+      if (placeholder) placeholder.remove();
+      const div = document.createElement('div');
+      div.className = `message ${role}${isError ? ' error' : ''}`;
+
+      let html = `<div class="role">${role}</div><div class="body">`;
+      if (role === 'bot' && !isError) {
+        html += parseMarkdown(text);
+      } else {
+        html += escapeHtml(text).replace(/\n/g, '<br>');
+      }
+      html += `</div>`;
+
+      div.innerHTML = html;
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function parseMarkdown(text) {
+      if (!text) return '';
+
+      // 1. Initial cleanup: strip leading/trailing whitespace and common artifacts
+      let cleanText = text.trim();
+
+      // 2. Standardize headers: Convert any "### Header", "**Header:**", or "[Header]:" to standard "[Header]"
+      // This helps catch cases where the model forgets the strict format
+      cleanText = cleanText.replace(/^(?:#{1,6}\s*|\*\*|\[)([^#\*\]\n:]+?)(?:\]\s*:?|\*\*[: ]|[:# ]|$)/gm, '[$1]');
+
+      // 3. Split by standard [HEADER] format
+      const rawSections = cleanText.split(/\n?(?=\[[A-Z0-9_ ]+\])/g);
+
+      return rawSections
+        .filter(s => s.trim().length > 0)
+        .map(s => {
+          let content = s.trim();
+          let header = '';
+
+          // Extract header from [TITLE]
+          const headerMatch = content.match(/^\[([A-Z0-9_ ]+)\]/i);
+          if (headerMatch) {
+            header = headerMatch[1].trim();
+            content = content.replace(/^\[[A-Z0-9_ ]+\]\s*:?/, '').trim();
+          }
+
+          // 4. Secondary cleanup for the content: strip stray hashes or colons at line starts
+          // especially those like "#### the Two-Sum Problem"
+          content = content.replace(/^#{1,6}\s*/gm, '');
+          content = content.replace(/^:\s*/gm, '');
+
+          // Convert code blocks
+          let sectionHtml = content.replace(/```[a-z]*\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+          sectionHtml = sectionHtml.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+
+          // Convert basic markdown
+          sectionHtml = sectionHtml
+            .replace(/\*\*([\s\S]*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/^\s*[\*\-•]\s+(.*)$/gm, '<li>$1</li>')
+            .replace(/^\s*\d+\.\s*(.*)$/gm, '<li>$1</li>')
+            .replace(/\n/g, '<br>');
+
+          if (sectionHtml.includes('<li>')) {
+            sectionHtml = sectionHtml.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+              .replace(/<\/li><br>/g, '</li>');
+          }
+
+          if (header) {
+            return `<div class="bot-section"><div class="bot-header">${header}</div><div class="bot-content">${sectionHtml}</div></div>`;
+          }
+          return `<div class="bot-section"><div class="bot-content">${sectionHtml}</div></div>`;
+        }).join('');
+    }
+
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    function setLoading(on) {
+      let el = document.querySelector('.loading');
+      if (on && !el) {
+        el = document.createElement('div');
+        el.className = 'message loading loading-dots';
+        el.setAttribute('aria-busy', 'true');
+        el.textContent = 'Thinking';
+        messagesEl.appendChild(el);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      } else if (!on && el) el.remove();
+      agentSubmitBtn.disabled = on;
+    }
+
+
+
+    async function loadProblem(slug) {
+      currentProblemSlug = slug;
+      problemStatement.innerHTML = '<p style="color: var(--text-muted);">Loading…</p>';
+      try {
+        const res = await fetch('/api/problem/' + encodeURIComponent(slug));
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          problemStatement.innerHTML = '<p class="error">' + escapeHtml(err.detail || res.statusText || 'Failed to load') + '</p>';
+          return;
+        }
+        const p = await res.json();
+        problemStatement.innerHTML =
+          '<div class="problem-title">' + escapeHtml(p.title || slug) + '</div>' +
+          (p.difficulty ? '<span class="difficulty ' + escapeHtml(p.difficulty) + '">' + escapeHtml(p.difficulty) + '</span>' : '') +
+          '<div class="problem-content">' + (p.content || '') + '</div>';
+
+        currentExampleTestcases = p.exampleTestcases || "";
+        currentExpectedOutputs = p.expectedOutputs || [];
+        currentOrderIndependent = p.orderIndependent || false;
+        testResultsContainer.style.display = 'none';
+        testResultsList.innerHTML = '';
+        codeEditor.value = p.pythonStub || '# Write your solution\nclass Solution:\n    def solve(self):\n        pass';
+
+        // Ask the agent to summarize this problem and outline an approach.
+        explainProblemToAgent(p, slug);
+      } catch (e) {
+        problemStatement.innerHTML = '<p class="error">' + escapeHtml(e.message) + '</p>';
+      }
+    }
+
+    async function explainProblemToAgent(problem, slug) {
+      const title = problem.title || slug;
+      try {
+        const res = await fetch('/api/explain-problem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, slug }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          addMessage('bot', data.detail || res.statusText || 'Failed to explain problem', true);
+          return;
+        }
+        addMessage('bot', data.response || '');
+      } catch (e) {
+        addMessage('bot', e.message || 'Failed to explain problem', true);
+      }
+    }
+
+
+
+    // Run button (now runs examples)
+    runBtn.addEventListener('click', async () => {
+      if (!currentExampleTestcases) {
+        testResultsContainer.style.display = 'block';
+        testResultsList.innerHTML = '<p class="error">No example test cases found for this problem.</p>';
+        return;
+      }
+
+      runBtn.disabled = true;
+      const originalText = runBtn.textContent;
+      runBtn.textContent = 'Running…';
+      testResultsContainer.style.display = 'block';
+      testResultsList.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem;">Testing your solution against examples...</p>';
+
+      try {
+        const res = await fetch('/api/run-examples', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: codeEditor.value,
+            examples: currentExampleTestcases,
+            expected_outputs: currentExpectedOutputs,
+            public_cases_count: currentExpectedOutputs.length,
+            order_independent: currentOrderIndependent
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          testResultsList.innerHTML = `<p class="error">${escapeHtml(data.detail || res.statusText || 'Execution failed')}</p>`;
+          return;
+        }
+
+        renderTestResults(data.results || []);
+        if (data.stderr) {
+          const pre = document.createElement('pre');
+          pre.className = 'error';
+          pre.style.fontSize = '0.75rem';
+          pre.textContent = 'stderr:\n' + data.stderr;
+          testResultsList.appendChild(pre);
+        }
+
+        // Automated Analysis after Run
+        analyzeSubmission(codeEditor.value, currentProblemSlug, data.results || [], data.stderr || "", 1);
+      } catch (e) {
+        testResultsList.innerHTML = `<p class="error">${escapeHtml(e.message || 'Request failed')}</p>`;
+      } finally {
+        runBtn.disabled = false;
+        runBtn.textContent = originalText;
+      }
+    });
+
+    async function analyzeSubmission(code, slug, results, stderr, level = 1) {
+      let analyzingMsg = null;
+      try {
+        // Only show "Analyzing" message for the first level
+        if (level === 1) {
+          analyzingMsg = document.createElement('div');
+          analyzingMsg.className = 'message bot';
+          analyzingMsg.innerHTML = `
+            <div class="role">bot</div>
+            <div class="body">
+              <div class="analyzing-indicator">
+                <div class="analyzing-pulse"></div>
+                Analyzing your solution...
+              </div>
+            </div>
+          `;
+          messagesEl.appendChild(analyzingMsg);
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        const res = await fetch('/api/analyze-submission', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, slug, results, stderr, level }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (analyzingMsg) analyzingMsg.remove();
+
+        if (res.ok && data.response) {
+          // If any result is not verified, we shouldn't consider it a "passed" solution for analysis purposes
+          const passed = results.length > 0 && results.every(r => r.passed && r.verified !== false);
+          addAnalysisMessage(data.response, code, slug, results, stderr, level, passed);
+          return true;
+        } else {
+          addMessage('bot', `Analysis failed: ${escapeHtml(data.detail || res.statusText || 'Unknown server error')}`, true);
+          return false;
+        }
+      } catch (e) {
+        if (analyzingMsg) analyzingMsg.remove();
+        console.error('Analysis failed:', e);
+        addMessage('bot', `Analysis failed: ${escapeHtml(e.message)}`, true);
+        return false;
+      }
+    }
+
+    function addAnalysisMessage(text, code, slug, results, stderr, level, passed) {
+      const div = document.createElement('div');
+      div.className = `message bot`;
+
+      let html = `<div class="role">bot</div><div class="body">`;
+      html += parseMarkdown(text);
+
+      // Add interactive buttons if failed and not level 3
+      if (!passed && level < 3) {
+        html += `<div class="analysis-actions">`;
+        if (level === 1) {
+          html += `<button class="btn-small want-more">Want more hints?</button>`;
+        }
+        html += `<button class="btn-small accent take-defeat">Take Defeat</button>`;
+        html += `</div>`;
+      }
+
+      html += `</div>`;
+      div.innerHTML = html;
+
+      // Wire up buttons
+      div.querySelectorAll('.want-more').forEach(btn => {
+        btn.onclick = async () => {
+          btn.disabled = true;
+          const originalText = btn.textContent;
+          btn.textContent = "Loading...";
+          const success = await analyzeSubmission(code, slug, results, stderr, 2);
+          if (!success) {
+            btn.disabled = false;
+            btn.textContent = originalText;
+          }
+        };
+      });
+
+      div.querySelectorAll('.take-defeat').forEach(btn => {
+        btn.onclick = async () => {
+          btn.disabled = true;
+          const originalText = btn.textContent;
+          btn.textContent = "Loading...";
+          const success = await analyzeSubmission(code, slug, results, stderr, 3);
+          if (!success) {
+            btn.disabled = false;
+            btn.textContent = originalText;
+          }
+        };
+      });
+
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    // Submit button
+    submitBtnAction.addEventListener('click', async () => {
+      if (!currentExampleTestcases) {
+        testResultsContainer.style.display = 'block';
+        testResultsList.innerHTML = '<p class="error">No problem context found.</p>';
+        return;
+      }
+
+      submitBtnAction.disabled = true;
+      const originalText = submitBtnAction.textContent;
+      submitBtnAction.textContent = 'Submitting…';
+      testResultsContainer.style.display = 'block';
+      testResultsList.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem;">Submitting your solution...</p>';
+
+      try {
+        const res = await fetch('/api/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: codeEditor.value,
+            slug: currentProblemSlug
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          testResultsList.innerHTML = `<p class="error">${escapeHtml(data.detail || res.statusText || 'Submission failed')}</p>`;
+          return;
+        }
+
+        if (data.debug_info) {
+          console.log('Submit Debug Info:', data.debug_info);
+        }
+
+        if (data.notice) {
+          testResultsList.innerHTML = `<div style="background: rgba(234, 179, 8, 0.1); border: 1px solid #eab308; border-radius: 6px; padding: 0.75rem; margin-bottom: 1rem; font-size: 0.85rem; color: #facc15;">
+            <strong>Notice:</strong> ${escapeHtml(data.notice)}
+          </div>`;
+          renderTestResults(data.results || [], true);
+        } else {
+          renderTestResults(data.results || []);
+        }
+
+        if (data.stderr) {
+          const pre = document.createElement('pre');
+          pre.className = 'error';
+          pre.style.fontSize = '0.75rem';
+          pre.textContent = 'stderr:\n' + data.stderr;
+          testResultsList.appendChild(pre);
+        }
+
+        // Automated Analysis after Submit
+        const resultsArray = data.results || [];
+        const allPassed = resultsArray.length > 0 && resultsArray.every(r => r.passed);
+        analyzeSubmission(codeEditor.value, currentProblemSlug, resultsArray, data.stderr || "", allPassed ? 3 : 1);
+      } catch (e) {
+        testResultsList.innerHTML = `<p class="error">${escapeHtml(e.message || 'Request failed')}</p>`;
+      } finally {
+        submitBtnAction.disabled = false;
+        submitBtnAction.textContent = originalText;
+      }
+    });
+
+    // Ask AI to Validate button
+    const validateBtn = document.getElementById('validate-btn');
+    validateBtn.addEventListener('click', async () => {
+      const code = codeEditor.value;
+      const slug = currentProblemSlug;
+
+      if (!code.trim() || !slug) {
+        addMessage('bot', "Please load a problem and write some code before asking for validation.", true);
+        return;
+      }
+
+      validateBtn.disabled = true;
+      const originalText = validateBtn.textContent;
+      validateBtn.textContent = 'Validating...';
+
+      let analyzingMsg = document.createElement('div');
+      analyzingMsg.className = 'message bot';
+      analyzingMsg.innerHTML = `
+        <div class="role">bot</div>
+        <div class="body">
+          <div class="analyzing-indicator">
+            <div class="analyzing-pulse"></div>
+            Validator Agent is reviewing your code...
+          </div>
+        </div>
+      `;
+      messagesEl.appendChild(analyzingMsg);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+
+      try {
+        // Fetch problem details to pass to the validator
+        const probRes = await fetch('/api/problem/' + encodeURIComponent(slug));
+        if (!probRes.ok) throw new Error("Could not fetch problem details for validation");
+        const problemData = await probRes.json();
+
+        // Use regex to strip HTML tags for plain text description/constraints
+        const plainContent = (problemData.content || "").replace(/<[^>]*>?/gm, '');
+
+        const res = await fetch('/api/validate-llm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: problemData.title || slug,
+            description: plainContent.substring(0, 1500), // Send a truncated version to save tokens
+            constraints: "See problem description", // Can be refined if we parse constraints explicitly
+            code: code,
+          }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (analyzingMsg) analyzingMsg.remove();
+
+        if (!res.ok) {
+          addMessage('bot', data.detail || res.statusText || 'Validation request failed', true);
+          return;
+        }
+
+        // Format the JSON response into Markdown for the chat window
+        let mdResponse = `[VALIDATION RESULTS]\n\n`;
+        mdResponse += `- Correctness: ${data.is_correct ? '✅ Likely Correct' : '❌ Needs Work'}\n`;
+        mdResponse += `- Time Complexity: \`${data.time_complexity}\`\n`;
+        mdResponse += `- Space Complexity: \`${data.space_complexity}\`\n`;
+        mdResponse += `- Edge Cases Handled: ${data.edge_cases_handled ? '✅ Yes' : '⚠️ Double Check'}\n\n`;
+        mdResponse += `[FEEDBACK]\n${data.feedback}`;
+
+        addMessage('bot', mdResponse);
+
+      } catch (e) {
+        if (analyzingMsg) analyzingMsg.remove();
+        addMessage('bot', e.message || 'Validation failed', true);
+      } finally {
+        validateBtn.disabled = false;
+        validateBtn.textContent = originalText;
+      }
+    });
+
+    function renderTestResults(results, append = false) {
+      if (!results || !results.length) {
+        if (!append) testResultsList.innerHTML = '<p style="color: var(--text-muted);">No results returned.</p>';
+        return;
+      }
+
+      const html = results.map((res, i) => {
+        let statusClass = res.passed ? 'passed' : 'failed';
+        let statusText = res.passed ? 'Passed' : 'Failed';
+
+        let badge = '';
+        if (res.is_hidden) {
+          badge = `<span style="background: rgba(139, 92, 246, 0.2); color: #a78bfa; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; margin-left: 0.5rem; border: 1px solid rgba(139, 92, 246, 0.3);">Hidden AI Case</span>`;
+        } else if (res.verified) {
+          badge = `<span style="background: rgba(34, 211, 238, 0.2); color: #22d3ee; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; margin-left: 0.5rem; border: 1px solid rgba(34, 211, 238, 0.3);">Verified</span>`;
+        } else {
+          badge = `<span style="background: rgba(234, 179, 8, 0.2); color: #fbbf24; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; margin-left: 0.5rem; border: 1px solid rgba(234, 179, 8, 0.3);">Public Case</span>`;
+        }
+
+        return `
+          <div class="test-case ${statusClass}" style="${res.is_hidden ? 'border-left-color: #8b5cf6;' : ''}">
+            <div class="test-case-header">
+              <span style="font-size: 0.8rem; font-weight: 500;">
+                Case ${i + 1} ${badge}
+              </span>
+              <span class="test-case-status">${statusText}</span>
+            </div>
+            <div class="test-case-info">
+              <div><strong>Input:</strong> <code>${escapeHtml(res.input)}</code></div>
+              ${res.output ? `<div><strong>Your Output:</strong> <code>${escapeHtml(res.output)}</code></div>` : ''}
+              ${res.expected ? `<div><strong>Expected:</strong> <code>${escapeHtml(res.expected)}</code></div>` : ''}
+              ${res.error ? `<div class="error"><strong>Error:</strong> ${escapeHtml(res.error)}</div>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      if (append) {
+        testResultsList.insertAdjacentHTML('beforeend', html);
+      } else {
+        testResultsList.innerHTML = html;
+      }
+    }
+
+    // Code editor keyboard: Tab for indent, Enter for newline + auto-indent, Ctrl/Cmd+Enter to Run
+    codeEditor.addEventListener('keydown', (e) => {
+      const value = codeEditor.value;
+      const start = codeEditor.selectionStart;
+      const end = codeEditor.selectionEnd;
+
+      // Run: Ctrl+Enter or Cmd+Enter
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        runBtn.click();
+        return;
+      }
+
+      // Tab inserts 4 spaces
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const insert = '    ';
+        codeEditor.value = value.slice(0, start) + insert + value.slice(end);
+        codeEditor.selectionStart = codeEditor.selectionEnd = start + insert.length;
+        return;
+      }
+
+      // Enter: newline + keep indentation
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        // Find start of current line
+        let lineStart = value.lastIndexOf('\n', start - 1);
+        if (lineStart === -1) lineStart = 0;
+        else lineStart += 1;
+        const line = value.slice(lineStart, start);
+        const indentMatch = line.match(/^[\t ]*/);
+        let indent = indentMatch ? indentMatch[0] : '';
+
+        // Python-style auto-indent: if line ends with ':', add 4 spaces
+        if (line.trim().endsWith(':')) {
+          indent += '    ';
+        }
+
+        const insert = '\n' + indent;
+        codeEditor.value = value.slice(0, start) + insert + value.slice(end);
+        const pos = start + insert.length;
+        codeEditor.selectionStart = codeEditor.selectionEnd = pos;
+      }
+    });
+
+    // Agent chat submit (button or Enter)
+    agentForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const message = agentInput.value.trim();
+      if (!message) return;
+
+      addMessage('user', message);
+      agentInput.style.height = 'auto';
+      setLoading(true);
+
+      try {
+        console.log('Sending chat message:', message);
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message,
+            problem_slug: currentProblemSlug || undefined,
+            problem_title: document.querySelector('.problem-title')?.textContent || undefined
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          console.error('Chat API error:', res.status, data);
+          addMessage('bot', data.detail || res.statusText || 'Request failed', true);
+        } else {
+          addMessage('bot', data.response || '');
+          agentInput.value = ''; // Clear only on success
+        }
+      } catch (err) {
+        console.error('Chat network error:', err);
+        addMessage('bot', err.message || 'Network error', true);
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    // Agent input: Enter to send, Shift+Enter for newline
+    agentInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        agentForm.requestSubmit();
+      }
+    });
+
+    agentInput.addEventListener('input', () => {
+      agentInput.style.height = 'auto';
+      agentInput.style.height = Math.min(agentInput.scrollHeight, 120) + 'px';
+    });
+
+    if (location.hash.match(/#\/?problem\/([^/]+)/)) {
+      const slug = location.hash.replace(/#\/?problem\//, '').split('/')[0];
+      loadProblem(slug);
+    }
+
+    // --- Task bar (MCP) ---
+    const taskbarDaily = document.getElementById('taskbar-daily');
+    const taskbarSearchInput = document.getElementById('taskbar-search-input');
+    const taskbarDifficulty = document.getElementById('taskbar-difficulty');
+    const taskbarSearchBtn = document.getElementById('taskbar-search-btn');
+    const taskbarSearchResults = document.getElementById('taskbar-search-results');
+
+    taskbarDaily.addEventListener('click', async () => {
+      taskbarDaily.disabled = true;
+      taskbarDaily.textContent = 'Loading…';
+      try {
+        const res = await fetch('/api/daily');
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+        const data = await res.json();
+        if (data.slug) loadProblem(data.slug);
+      } catch (e) {
+        addMessage('bot', 'Daily challenge: ' + (e.message || 'failed'), true);
+      } finally {
+        taskbarDaily.disabled = false;
+        taskbarDaily.textContent = "Today's challenge";
+      }
+    });
+
+    function showSearchResults(problems) {
+      if (!problems.length) {
+        taskbarSearchResults.innerHTML = '<div style="padding: 0.75rem; color: var(--text-muted); font-size: 0.85rem;">No problems found.</div>';
+      } else {
+        taskbarSearchResults.innerHTML = problems.map(p => {
+          const diff = p.difficulty ? `<span class="diff difficulty ${p.difficulty}">${p.difficulty}</span>` : '';
+          return `<div class="result-item" data-slug="${escapeHtml(p.titleSlug || '')}"><span>${escapeHtml(p.title || p.titleSlug || '')}</span>${diff}</div>`;
+        }).join('');
+        taskbarSearchResults.querySelectorAll('.result-item').forEach(el => {
+          el.addEventListener('click', () => {
+            const slug = el.getAttribute('data-slug');
+            if (slug) loadProblem(slug);
+            taskbarSearchResults.style.display = 'none';
+          });
+        });
+      }
+      taskbarSearchResults.style.display = 'block';
+    }
+
+    let searchTimeout = null;
+
+    async function performSearch() {
+      const q = taskbarSearchInput.value.trim();
+      const difficulty = taskbarDifficulty.value || undefined;
+
+      // Auto-hide if completely empty and no difficulty selected
+      if (!q && !difficulty) {
+        taskbarSearchResults.style.display = 'none';
+        return;
+      }
+
+      try {
+        const params = new URLSearchParams({ limit: '15' });
+        if (q) params.set('q', q);
+        if (difficulty) params.set('difficulty', difficulty);
+        const res = await fetch('/api/search?' + params);
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+        const data = await res.json();
+        showSearchResults(data.problems || []);
+      } catch (e) {
+        showSearchResults([]);
+        addMessage('bot', 'Search: ' + (e.message || 'failed'), true);
+      }
+    }
+
+    taskbarSearchBtn.addEventListener('click', async () => {
+      performSearch();
+    });
+
+    taskbarSearchInput.addEventListener('input', () => {
+      if (searchTimeout) clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        performSearch();
+      }, 300); // 300ms debounce
+    });
+
+    taskbarDifficulty.addEventListener('change', () => {
+      performSearch();
+    });
+
+    document.addEventListener('click', (e) => {
+      if (taskbarSearchResults.style.display === 'block' && !e.target.closest('.taskbar-search-wrap'))
+        taskbarSearchResults.style.display = 'none';
+    });
+
+    // --- Resizer Logic ---
+    function initResizer(gutterId, leftId, rightId) {
+      const gutter = document.getElementById(gutterId);
+      const left = document.getElementById(leftId);
+      const right = document.getElementById(rightId);
+      let isDragging = false;
+
+      gutter.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        gutter.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+
+        const leftRect = left.getBoundingClientRect();
+        const rightRect = right.getBoundingClientRect();
+        const combinedWidth = leftRect.width + rightRect.width;
+
+        const newLeftWidth = e.clientX - leftRect.left;
+        const newRightWidth = combinedWidth - newLeftWidth;
+
+        if (newLeftWidth > 150 && newRightWidth > 150) {
+          const leftFlex = parseFloat(getComputedStyle(left).flexGrow);
+          const rightFlex = parseFloat(getComputedStyle(right).flexGrow);
+          const totalFlex = leftFlex + rightFlex;
+
+          const newLeftFlex = (newLeftWidth / combinedWidth) * totalFlex;
+          const newRightFlex = totalFlex - newLeftFlex;
+
+          left.style.flex = `${newLeftFlex} 1 0%`;
+          right.style.flex = `${newRightFlex} 1 0%`;
+        }
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (isDragging) {
+          isDragging = false;
+          gutter.classList.remove('dragging');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+        }
+      });
+    }
+
+    initResizer('gutter-1', 'panel-problem', 'panel-code');
+    initResizer('gutter-2', 'panel-code', 'panel-agent');
+  </script>
+</body>
+
+</html>

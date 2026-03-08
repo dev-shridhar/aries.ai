@@ -1,0 +1,61 @@
+2026-03-09 00:29:19,327 [INFO] api: Initializing database...
+2026-03-09 00:30:16,296 [INFO] api: Initializing database...
+2026-03-09 00:30:16,303 [INFO] api: Incoming request: GET / Body: 
+2026-03-09 00:30:16,303 [INFO] api: Response status: 200
+2026-03-09 00:30:23,781 [INFO] api: Incoming request: GET /api/search Body: 
+2026-03-09 00:30:24,631 [INFO] api: Incoming request: GET /api/search Body: 
+2026-03-09 00:30:27,695 [INFO] api: Response status: 200
+2026-03-09 00:30:27,696 [INFO] api: Response status: 200
+2026-03-09 00:30:32,962 [INFO] api: Incoming request: GET /api/search Body: 
+2026-03-09 00:30:33,470 [INFO] api: Incoming request: GET /api/search Body: 
+2026-03-09 00:30:35,463 [INFO] api: Response status: 200
+2026-03-09 00:30:35,776 [INFO] api: Response status: 200
+2026-03-09 00:30:38,462 [INFO] api: Incoming request: GET /api/problem/two-sum Body: 
+2026-03-09 00:30:41,446 [INFO] api: Response status: 200
+2026-03-09 00:30:41,453 [INFO] api: Incoming request: POST /api/explain-problem Body: {"title":"Two Sum","slug":"two-sum"}
+2026-03-09 00:30:42,218 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:30:42,239 [INFO] api: Response status: 200
+2026-03-09 00:31:17,179 [INFO] api: Incoming request: POST /api/chat Body: {"message":"Hey, can you tell how should i approach this problem"}
+2026-03-09 00:31:17,194 [INFO] api: Raw chat request body: {"message":"Hey, can you tell how should i approach this problem"}
+2026-03-09 00:31:17,194 [INFO] api: ChatRequest object: message='Hey, can you tell how should i approach this problem'
+2026-03-09 00:31:21,634 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-03-09 00:31:21,662 [ERROR] api: POST /api/chat failed
+Traceback (most recent call last):
+  File "/Users/shridharkulkarni/personal/learning-mcp/dsa-agent/api.py", line 803, in chat
+    response = await run_agent(
+               ^^^^^^^^^^^^^^^^
+  File "/Users/shridharkulkarni/personal/learning-mcp/dsa-agent/agent.py", line 44, in run_agent
+    response = client.chat.completions.create(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shridharkulkarni/personal/learning-mcp/dsa-agent/.venv/lib/python3.12/site-packages/groq/resources/chat/completions.py", line 461, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/Users/shridharkulkarni/personal/learning-mcp/dsa-agent/.venv/lib/python3.12/site-packages/groq/_base_client.py", line 1242, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shridharkulkarni/personal/learning-mcp/dsa-agent/.venv/lib/python3.12/site-packages/groq/_base_client.py", line 1044, in request
+    raise self._make_status_error_from_response(err.response) from None
+groq.BadRequestError: Error code: 400 - {'error': {'message': "Failed to call a function. Please adjust your prompt. See 'failed_generation' for more details.", 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '<function=get_problem={"titleSlug": "problem-title"}</function>'}}
+2026-03-09 00:31:21,666 [INFO] api: Response status: 500
+2026-03-09 00:33:08,539 [INFO] api: Initializing database...
+2026-03-09 00:33:15,513 [INFO] api: Initializing database...
+2026-03-09 00:33:23,210 [INFO] api: Initializing database...
+2026-03-09 00:34:01,380 [INFO] api: Initializing database...
+2026-03-09 00:35:08,383 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:35:18,018 [INFO] api: Raw chat request body: {"message":"how should i approach this problme?","problem_slug":"two-sum","problem_title":"Two Sum"}
+2026-03-09 00:35:18,019 [INFO] api: ChatRequest object: message='how should i approach this problme?' problem_slug='two-sum' problem_title='Two Sum'
+2026-03-09 00:35:22,272 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:35:23,755 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:35:42,559 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:36:17,895 [INFO] api: Available MCP tools: ['get_daily_challenge', 'get_problem', 'search_problems', 'get_user_profile', 'get_recent_submissions', 'get_recent_ac_submissions', 'get_user_status', 'get_problem_submission_report', 'get_problem_progress', 'get_all_submissions', 'get_user_contest_ranking', 'list_problem_solutions', 'get_problem_solution']
+2026-03-09 00:36:18,887 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:36:43,683 [INFO] api: Initializing database...
+2026-03-09 00:37:19,961 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:37:24,957 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:37:30,843 [INFO] api: Available MCP tools: ['get_daily_challenge', 'get_problem', 'search_problems', 'get_user_profile', 'get_recent_submissions', 'get_recent_ac_submissions', 'get_user_status', 'get_problem_submission_report', 'get_problem_progress', 'get_all_submissions', 'get_user_contest_ranking', 'list_problem_solutions', 'get_problem_solution']
+2026-03-09 00:37:32,231 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:38:07,476 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:39:44,179 [INFO] api: Initializing database...
+2026-03-09 00:39:59,906 [INFO] api: Initializing database...
+2026-03-09 00:41:00,096 [INFO] api: Initializing database...
+2026-03-09 00:41:27,828 [INFO] api: Initializing database...
