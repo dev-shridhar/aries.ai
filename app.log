@@ -59,3 +59,22 @@ groq.BadRequestError: Error code: 400 - {'error': {'message': "Failed to call a 
 2026-03-09 00:39:59,906 [INFO] api: Initializing database...
 2026-03-09 00:41:00,096 [INFO] api: Initializing database...
 2026-03-09 00:41:27,828 [INFO] api: Initializing database...
+2026-03-09 00:49:00,361 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:49:10,968 [INFO] api: Available MCP tools: ['get_daily_challenge', 'get_problem', 'search_problems', 'get_user_profile', 'get_recent_submissions', 'get_recent_ac_submissions', 'get_user_status', 'get_problem_submission_report', 'get_problem_progress', 'get_all_submissions', 'get_user_contest_ranking', 'list_problem_solutions', 'get_problem_solution']
+2026-03-09 00:49:10,969 [INFO] api: Using AI testcase generator for evaluation
+2026-03-09 00:49:12,956 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:49:12,958 [INFO] api: Generated 12 hidden test cases via AI.
+2026-03-09 00:49:12,958 [INFO] api: Total test cases to run: 15
+2026-03-09 00:49:13,470 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:50:18,672 [INFO] api: Initializing database...
+2026-03-09 00:50:33,151 [INFO] api: Initializing database...
+2026-03-09 00:50:55,799 [INFO] api: Initializing database...
+2026-03-09 00:56:43,397 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:56:46,592 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:56:54,044 [INFO] api: Available MCP tools: ['get_daily_challenge', 'get_problem', 'search_problems', 'get_user_profile', 'get_recent_submissions', 'get_recent_ac_submissions', 'get_user_status', 'get_problem_submission_report', 'get_problem_progress', 'get_all_submissions', 'get_user_contest_ranking', 'list_problem_solutions', 'get_problem_solution']
+2026-03-09 00:56:54,044 [INFO] api: Using AI testcase generator for evaluation
+2026-03-09 00:56:55,618 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:56:55,620 [INFO] api: Generated 12 hidden test cases via AI.
+2026-03-09 00:56:55,620 [INFO] api: Total test cases to run: 15
+2026-03-09 00:56:56,248 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-09 00:57:07,224 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"

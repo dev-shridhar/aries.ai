@@ -371,7 +371,7 @@
 
     /* Middle: Code */
     .panel-code {
-      flex: 1 1 0%;
+      flex: 1.5 1 0%;
     }
 
     .code-toolbar {
@@ -532,7 +532,7 @@
 
     /* Right: Agent */
     .panel-agent {
-      flex: 1.5 1 0%;
+      flex: 1 1 0%;
     }
 
     .agent-placeholder {
@@ -894,7 +894,7 @@
               style="background: #22c55e; color: white; border: none;">Submit</button>
           </div>
         </div>
-        <textarea id="code-editor"
+        <textarea id="code-editor" spellcheck="false"
           placeholder="# Load a problem to get the starter code, or write your solution here."></textarea>
 
         <div id="test-results-container" class="test-results" style="display: none;">
@@ -1271,14 +1271,7 @@
           console.log('Submit Debug Info:', data.debug_info);
         }
 
-        if (data.notice) {
-          testResultsList.innerHTML = `<div style="background: rgba(234, 179, 8, 0.1); border: 1px solid #eab308; border-radius: 6px; padding: 0.75rem; margin-bottom: 1rem; font-size: 0.85rem; color: #facc15;">
-            <strong>Notice:</strong> ${escapeHtml(data.notice)}
-          </div>`;
-          renderTestResults(data.results || [], true);
-        } else {
-          renderTestResults(data.results || []);
-        }
+        renderTestResults(data.results || []);
 
         if (data.stderr) {
           const pre = document.createElement('pre');
@@ -1388,13 +1381,6 @@
         let statusText = res.passed ? 'Passed' : 'Failed';
 
         let badge = '';
-        if (res.is_hidden) {
-          badge = `<span style="background: rgba(139, 92, 246, 0.2); color: #a78bfa; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; margin-left: 0.5rem; border: 1px solid rgba(139, 92, 246, 0.3);">Hidden AI Case</span>`;
-        } else if (res.verified) {
-          badge = `<span style="background: rgba(34, 211, 238, 0.2); color: #22d3ee; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; margin-left: 0.5rem; border: 1px solid rgba(34, 211, 238, 0.3);">Verified</span>`;
-        } else {
-          badge = `<span style="background: rgba(234, 179, 8, 0.2); color: #fbbf24; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; margin-left: 0.5rem; border: 1px solid rgba(234, 179, 8, 0.3);">Public Case</span>`;
-        }
 
         return `
           <div class="test-case ${statusClass}" style="${res.is_hidden ? 'border-left-color: #8b5cf6;' : ''}">
@@ -1441,6 +1427,24 @@
         codeEditor.value = value.slice(0, start) + insert + value.slice(end);
         codeEditor.selectionStart = codeEditor.selectionEnd = start + insert.length;
         return;
+      }
+
+      // Backspace: smart de-indent (delete 4 spaces if possible)
+      if (e.key === 'Backspace' && start === end) {
+        const before = value.slice(0, start);
+        if (before.endsWith('    ')) {
+          // Check if it's strictly indentation (start of line)
+          let lineStart = value.lastIndexOf('\n', start - 1);
+          if (lineStart === -1) lineStart = 0;
+          else lineStart += 1;
+          const linePrefix = value.slice(lineStart, start);
+          if (linePrefix.match(/^ +$/)) {
+            e.preventDefault();
+            codeEditor.value = value.slice(0, start - 4) + value.slice(end);
+            codeEditor.selectionStart = codeEditor.selectionEnd = start - 4;
+            return;
+          }
+        }
       }
 
       // Enter: newline + keep indentation

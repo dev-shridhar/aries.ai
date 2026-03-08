@@ -436,7 +436,7 @@ def run_all_tests(raw_examples, expected_outputs):
         if n_args == 0:
             n_args = 1 # Fallback just in case
 
-        lines = raw_examples.strip().split("\n")
+        lines = [l for l in raw_examples.split("\n") if l.strip()]
         # Filter out trailing/leading empty lines but preserve internal structure
         while lines and not lines[0].strip(): lines.pop(0)
         while lines and not lines[-1].strip(): lines.pop()
@@ -666,7 +666,7 @@ async def submit(req: SubmitRequest):
             # Always generate hidden test cases for robust evaluation
             hidden_cases = await generate_hidden_testcases(
                 title=problem.get("title", req.slug),
-                description=re.sub(r'<[^>]*>?', '', html_content)[:1500], # strip html
+                description=re.sub(r'<[^>]*>?', '', html_content)[:3000], # strip html
                 constraints="See problem description", # Ideally parsed, but this works
                 num_cases=12
             )
@@ -676,8 +676,10 @@ async def submit(req: SubmitRequest):
             if hidden_cases:
                 for case in hidden_cases:
                     if "input" in case and "expected_output" in case:
-                        # Append the raw multiline input string, plus a newline
-                        all_examples_text += "\n" + case["input"].strip() + "\n"
+                        # Ensure each case starts on a new line and args are followed by newlines
+                        if not all_examples_text.endswith("\n") and all_examples_text:
+                            all_examples_text += "\n"
+                        all_examples_text += case["input"].strip() + "\n"
                         # Append the string representation to match HTML parsed expected outputs
                         expected_outputs.append(str(case["expected_output"]).strip())
                 logger.info(f"Total test cases to run: {len(expected_outputs)}")

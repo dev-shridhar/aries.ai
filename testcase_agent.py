@@ -27,7 +27,7 @@ Format Rules:
 1. Each object in the "testcases" array represents ONE complete test case.
 2. The object MUST have two keys: "input" and "expected_output".
 3. The "input" string MUST represent the exact multiline string format LeetCode uses, where multiple arguments are separated by a newline (`\\n`). You MUST correctly deduce the exact number of input arguments the problem expects and output exactly that many lines.
-4. The "expected_output" string MUST be the strict JSON representation of the correct answer for that input.
+4. The "expected_output" string MUST be the strict JSON representation of the correct answer for that input. You MUST verify the logic mentally or step-by-step; do NOT guess. For example, in a "Two Sum" problem, if you provide `[2,7,11,15]\n1000000000`, the expected output MUST NOT be `[0,1]` as that equals 9, not 1,000,000,000.
 
 Example for a problem expecting 2 arguments (array and int):
 {{
