@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { python } from '@codemirror/lang-python'
 import { vscodeDark } from '@uiw/codemirror-theme-vscode'
+import { indentUnit } from '@codemirror/language'
+import { keymap } from '@codemirror/view'
+import { indentWithTab } from '@codemirror/commands'
 import './index.css'
 
 function App() {
@@ -9,6 +12,7 @@ function App() {
   const [currentProblem, setCurrentProblem] = useState(null)
   const [currentProblemSlug, setCurrentProblemSlug] = useState('')
   const [code, setCode] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [problemsList, setProblemsList] = useState([])
@@ -132,6 +136,7 @@ function App() {
 
     setTestResults([])
     setShowTestResults(true)
+    setIsLoading(true)
 
     try {
       const res = await fetch('/api/run-examples', {
@@ -158,6 +163,8 @@ function App() {
       }
     } catch {
       setTestResults([{ error: 'Request failed' }])
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -170,6 +177,7 @@ function App() {
 
     setTestResults([])
     setShowTestResults(true)
+    setIsLoading(true)
 
     try {
       const res = await fetch('/api/submit', {
@@ -193,6 +201,8 @@ function App() {
       analyzeSubmission(code, currentProblemSlug, resultsArray, data.stderr || "", allPassed ? 3 : 1)
     } catch {
       setTestResults([{ error: 'Request failed' }])
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -502,8 +512,6 @@ function App() {
         </div>
       ) : (
         <div id="solve-view">
-          <div className={`drawer-overlay ${agentDrawerOpen ? 'show' : ''}`} onClick={() => setAgentDrawerOpen(false)}></div>
-
           <header>
             <div className="nav-left">
               <div className="logo-wrap" onClick={() => setView('home')} title="Return to Home">
@@ -569,7 +577,15 @@ function App() {
                     value={code}
                     height="100%"
                     theme={vscodeDark}
-                    extensions={[python()]}
+                    basicSetup={{
+                      tabSize: 4,
+                      indentOnInput: true,
+                    }}
+                    extensions={[
+                      python(),
+                      indentUnit.of("    "),
+                      keymap.of([indentWithTab])
+                    ]}
                     onChange={(val) => setCode(val)}
                     style={{ flex: 1, fontSize: '14px', fontFamily: '"JetBrains Mono", monospace' }}
                   />
@@ -602,16 +618,13 @@ function App() {
                   </div>
                 )}
               </div>
-              <div className="panel-footer">
-                <button type="button" id="validate-btn" style={{ background: 'rgba(168, 85, 247, 0.1)', color: 'var(--accent)', border: '1px solid rgba(168, 85, 247, 0.2)', borderRadius: 8, padding: '0.5rem 1rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem' }}>
-                  Ask AI to Validate
-                </button>
+              <div className="panel-footer" style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
                 <button
                   type="button"
                   id="run-btn"
                   onClick={handleRun}
                   disabled={isLoading}
-                  style={{ background: '#27272a', color: 'white', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '0.5rem 1.25rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem' }}
+                  style={{ background: 'rgba(34, 197, 94, 0.2)', color: '#4ade80', border: '1px solid rgba(34, 197, 94, 0.3)', borderRadius: 8, padding: '0.5rem 1.25rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem' }}
                 >
                   {isLoading ? 'Running...' : 'Run'}
                 </button>
