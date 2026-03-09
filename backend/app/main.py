@@ -4,8 +4,8 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
+from app.api.chat.router import router as chat_router
 from app.api.compiler.router import router as compiler_router
 from app.api.mcp.router import router as mcp_router, preload_problems
 from app.api.voice.router import router as voice_router
@@ -41,17 +41,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(chat_router, prefix="/api", tags=["chat"])
 app.include_router(mcp_router, prefix="/api", tags=["mcp"])
 app.include_router(compiler_router, prefix="/api", tags=["compiler"])
 app.include_router(voice_router, prefix="/api", tags=["voice"])
-
-STATIC_DIR = Path(__file__).parent.parent.parent / "static"
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-
-@app.get("/favicon.ico", include_in_schema=False)
-async def favicon():
-    from fastapi.responses import FileResponse
-
-    return FileResponse(STATIC_DIR / "favicon.png")

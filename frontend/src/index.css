@@ -657,7 +657,7 @@ header h1 span {
 .code-editor {
   flex: 1;
   width: 100%;
-  background: #08080c;
+  background: transparent;
   border: none;
   color: #f8f8f2;
   font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
@@ -1077,19 +1077,125 @@ header h1 span {
 }
 
 .hero-logo {
-  width: 180px;
-  height: 180px;
-  margin-bottom: 1rem;
-  animation: glow-pulse 4s ease-in-out infinite;
+  width: 280px;
+  height: 280px;
+  margin-bottom: -3rem;
+  position: relative;
+  /* Needed to anchor the air streams */
 }
 
 .hero-logo img {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  filter: drop-shadow(0 0 30px rgba(168, 85, 247, 0.5));
-  mix-blend-mode: screen;
-  border-radius: 50%;
+  filter: drop-shadow(0 0 15px rgba(34, 211, 238, 0.4));
+  transform-origin: bottom center;
+  animation: beast-sniff 3s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+}
+
+/* Base style for the glowing "air" streams */
+.hero-logo::before,
+.hero-logo::after {
+  content: '';
+  position: absolute;
+  bottom: 25%;
+  /* Positioned right under the nostrils of the mask */
+  width: 3px;
+  height: 25px;
+  background: linear-gradient(to top, transparent, rgba(34, 211, 238, 0.9), transparent);
+  border-radius: 5px;
+  filter: blur(1px) drop-shadow(0 0 8px rgba(34, 211, 238, 0.8));
+  opacity: 0;
+}
+
+/* Left nostril air */
+.hero-logo::before {
+  left: 45%;
+  animation: suck-air-left 3s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
+}
+
+/* Right nostril air */
+.hero-logo::after {
+  right: 45%;
+  animation: suck-air-right 3s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
+  animation-delay: 0.1s;
+  /* Slightly offset for organic feel */
+}
+
+@keyframes beast-sniff {
+
+  0%,
+  100% {
+    transform: scale(1) translateY(0) rotate(0deg);
+    filter: drop-shadow(0 0 10px rgba(34, 211, 238, 0.3));
+  }
+
+  20% {
+    /* Slight shake prep */
+    transform: scale(1.02) translateY(0) rotate(-3deg);
+  }
+
+  35% {
+    /* Hard inhale: Scale up, head shakes right */
+    transform: scale(1.1) translateY(-6px) rotate(5deg);
+    filter: drop-shadow(0 0 35px rgba(34, 211, 238, 0.9));
+  }
+
+  45% {
+    /* Rebound shake left */
+    transform: scale(1.08) translateY(-4px) rotate(-4deg);
+    filter: drop-shadow(0 0 25px rgba(34, 211, 238, 0.7));
+  }
+
+  60% {
+    /* Settle back */
+    transform: scale(1.03) translateY(-1px) rotate(2deg);
+  }
+}
+
+@keyframes suck-air-left {
+
+  0%,
+  15% {
+    transform: translateY(40px) translateX(-10px) rotate(20deg) scaleY(0.5);
+    opacity: 0;
+  }
+
+  25% {
+    opacity: 1;
+  }
+
+  40% {
+    /* Air hits the nostril and vanishes */
+    transform: translateY(-5px) translateX(5px) rotate(15deg) scaleY(1.8);
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes suck-air-right {
+
+  0%,
+  15% {
+    transform: translateY(40px) translateX(10px) rotate(-20deg) scaleY(0.5);
+    opacity: 0;
+  }
+
+  25% {
+    opacity: 1;
+  }
+
+  40% {
+    transform: translateY(-5px) translateX(-5px) rotate(-15deg) scaleY(1.8);
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 0;
+  }
 }
 
 .hero-subtitle {
@@ -1464,8 +1570,8 @@ header h1 span {
   position: fixed;
   bottom: 40px;
   right: 40px;
-  width: 120px;
-  height: 120px;
+  width: 160px;
+  height: 160px;
   cursor: pointer;
   z-index: 10000;
   display: flex;
@@ -1482,10 +1588,8 @@ header h1 span {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  filter: drop-shadow(0 0 20px rgba(168, 85, 247, 0.6));
   transition: all 0.3s ease;
-  mix-blend-mode: screen;
-  border-radius: 50%;
+  filter: drop-shadow(0 0 20px rgba(168, 85, 247, 0.6));
 }
 
 .aries-bot:hover img {
@@ -1494,21 +1598,18 @@ header h1 span {
 
 
 .aries-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.05);
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  border: 1px solid var(--border);
 }
 
 .aries-avatar img {
-  width: 20px;
-  height: 20px;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
+  filter: drop-shadow(0 0 5px rgba(168, 85, 247, 0.6));
 }
 
 /* Bubble Chat Window Styles */
@@ -1732,9 +1833,9 @@ header h1 span {
   right: 0;
   bottom: 0;
   border-radius: 50%;
-  background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
-  opacity: 0.3;
-  filter: blur(10px);
+  background: radial-gradient(circle, var(--accent) 0%, transparent 60%);
+  opacity: 0.2;
+  filter: blur(15px);
   z-index: -1;
   animation: glow-pulse 2s ease-in-out infinite;
 }
@@ -1753,16 +1854,27 @@ header h1 span {
   }
 }
 
-@keyframes aries-float {
-
-  0%,
-  100% {
-    transform: translateY(0);
+@keyframes float {
+  0% {
+    transform: translateY(0px);
   }
 
   50% {
-    transform: translateY(-15px);
+    transform: translateY(-10px);
   }
+
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+.cm-editor {
+  background-color: transparent !important;
+}
+
+.cm-gutters {
+  background-color: transparent !important;
+  border-right: none !important;
 }
 
 @keyframes aries-pulse {
