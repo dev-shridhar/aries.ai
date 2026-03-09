@@ -20,3 +20,8 @@ build/
 .vscode/
 *.swp
 *.swo
+
+# Runtime & Data
+*.log
+*.db
+*.sqlite3
