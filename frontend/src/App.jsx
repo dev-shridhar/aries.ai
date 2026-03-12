@@ -6,6 +6,7 @@ import { indentUnit } from '@codemirror/language'
 import { keymap } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
 import './index.css'
+import VoiceAgent from './components/voice/VoiceAgent'
 
 function App() {
   const [view, setView] = useState('home')
@@ -122,6 +123,15 @@ function App() {
       console.error('Failed to explain problem')
     }
   }
+
+  const handleAriesAction = (action, payload) => {
+    console.log('Aries Action:', action, payload);
+    if (action === 'LOAD_PROBLEM' && payload?.slug) {
+      loadProblem(payload.slug);
+      addToast(`Aries loaded: ${payload.slug}`, 'success');
+    }
+  }
+
 
 
 
@@ -644,15 +654,11 @@ function App() {
         </div>
       )}
 
-      <div className={`aries-bot ${isAriesTalking ? 'talking' : ''}`}>
-        <img src="/logo.png" alt="Aries" />
-        <div className="aries-glow"></div>
-        {showAriesBubble && (
-          <div className={`aries-bubble ${showAriesBubble ? 'show' : ''}`}>
-            {ariesBubble}
-          </div>
-        )}
-      </div>
+      <VoiceAgent
+        currentCode={code}
+        onAction={handleAriesAction}
+      />
+
 
       <div className="toast-container">
         {toasts.map(toast => (

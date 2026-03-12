@@ -125,11 +125,23 @@ header {
   height: 28px;
 }
 
+.aries-avatar.mini {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  transition: all 0.3s;
+}
+
 .aries-avatar.mini img {
-  width: 85%;
-  height: 85%;
+  width: 80%;
+  height: 80%;
   object-fit: contain;
-  mix-blend-mode: screen;
 }
 
 .aries-avatar.mini:hover {
@@ -1566,293 +1578,10 @@ header h1 span {
   font-size: 1.1rem;
 }
 
-.aries-bot {
-  position: fixed;
-  bottom: 40px;
-  right: 40px;
-  width: 160px;
-  height: 160px;
-  cursor: pointer;
-  z-index: 10000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.3s ease;
-}
-
-.aries-bot:hover {
-  transform: scale(1.15) rotate(5deg);
-}
-
-.aries-bot img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  transition: all 0.3s ease;
-  filter: drop-shadow(0 0 20px rgba(168, 85, 247, 0.6));
-}
-
-.aries-bot:hover img {
-  filter: drop-shadow(0 0 40px rgba(168, 85, 247, 0.9));
-}
+/* Aries Voice Agent styles are now managed in components/voice/ */
 
 
-.aries-avatar {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 
-.aries-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  filter: drop-shadow(0 0 5px rgba(168, 85, 247, 0.6));
-}
-
-/* Bubble Chat Window Styles */
-.aries-container.open {
-  pointer-events: auto;
-}
-
-.bubble-chat-window {
-  position: fixed;
-  top: 90px;
-  right: 2rem;
-  width: 400px;
-  height: calc(100vh - 130px);
-  background: rgba(15, 15, 25, 0.7);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
-  border: 1px solid rgba(168, 85, 247, 0.2);
-  border-radius: 20px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-  transform: translateX(450px);
-  transition: transform 0.5s cubic-bezier(0.19, 1, 0.22, 1);
-  z-index: 2000;
-  overflow: hidden;
-}
-
-.aries-container.open .bubble-chat-window {
-  transform: translateX(0);
-}
-
-.bubble-header {
-  padding: 1.5rem;
-  background: rgba(255, 255, 255, 0.03);
-  border-bottom: 1px solid rgba(168, 85, 247, 0.1);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.aries-info {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.aries-meta {
-  display: flex;
-  flex-direction: column;
-}
-
-.aries-name {
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: #fff;
-}
-
-.aries-status {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.status-dot {
-  width: 6px;
-  height: 6px;
-  background: var(--success);
-  border-radius: 50%;
-  box-shadow: 0 0 5px var(--success);
-}
-
-.close-bubble {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 4px;
-  transition: color 0.2s;
-}
-
-.close-bubble:hover {
-  color: white;
-}
-
-.bubble-messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.bubble-placeholder {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: var(--text-muted);
-  padding: 2rem;
-  font-size: 0.9rem;
-}
-
-.bubble-msg {
-  max-width: 85%;
-  padding: 1rem;
-  border-radius: 12px;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  animation: fadeIn 0.3s ease;
-}
-
-.bubble-msg.user {
-  align-self: flex-end;
-  background: var(--accent);
-  color: white;
-  border-bottom-right-radius: 2px;
-}
-
-.bubble-msg.bot {
-  align-self: flex-start;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--text);
-  border-bottom-left-radius: 2px;
-}
-
-.bubble-input-form {
-  padding: 1.25rem;
-  background: rgba(0, 0, 0, 0.2);
-  border-top: 1px solid var(--border);
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-end;
-}
-
-.bubble-input-form textarea {
-  flex: 1;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 0.75rem;
-  color: #fff;
-  font-size: 0.85rem;
-  resize: none;
-  max-height: 120px;
-  transition: all 0.2s;
-}
-
-.bubble-input-form textarea:focus {
-  outline: none;
-  border-color: var(--accent);
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.send-btn {
-  background: var(--accent);
-  border: none;
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.send-btn:hover:not(:disabled) {
-  transform: scale(1.05);
-  box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
-}
-
-.send-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-
-.aries-bot::after {
-  content: 'ARIES';
-  position: absolute;
-  bottom: 5px;
-  font-size: 11px;
-  font-weight: 900;
-  color: var(--accent);
-  letter-spacing: 0.25em;
-  text-shadow: 0 0 10px var(--accent);
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-
-.aries-bot:hover::after {
-  opacity: 1;
-}
-
-.aries-bot:hover {
-  transform: scale(1.15) rotate(5deg);
-}
-
-.aries-bot:hover img {
-  filter: drop-shadow(0 0 30px rgba(168, 85, 247, 0.9));
-}
-
-.aries-bot.talking {
-  animation: aries-float 2s ease-in-out infinite, aries-pulse 0.5s ease-in-out infinite;
-}
-
-.aries-bot:active {
-  transform: scale(0.95);
-}
-
-.aries-glow {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--accent) 0%, transparent 60%);
-  opacity: 0.2;
-  filter: blur(15px);
-  z-index: -1;
-  animation: glow-pulse 2s ease-in-out infinite;
-}
-
-@keyframes glow-pulse {
-
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.3;
-  }
-
-  50% {
-    transform: scale(1.4);
-    opacity: 0.6;
-  }
-}
 
 @keyframes float {
   0% {
