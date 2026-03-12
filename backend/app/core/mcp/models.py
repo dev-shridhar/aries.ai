@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import List, Optional
 
 
 class ExplainRequest(BaseModel):
@@ -13,6 +14,8 @@ class ExplainResponse(BaseModel):
 class SubmitRequest(BaseModel):
     code: str
     slug: str
+    username: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class TutorIntroRequest(BaseModel):
@@ -26,4 +29,6 @@ class TutorAnalyzeRequest(BaseModel):
     slug: str
     problem_title: str
     problem_description: str
-    history: list[dict] = []
+    history: List[dict] = []
+    username: Optional[str] = None
+    session_id: Optional[str] = None

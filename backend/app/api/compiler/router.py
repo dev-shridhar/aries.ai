@@ -11,6 +11,7 @@ from app.core.mcp.models import SubmitRequest
 from app.services.compiler.service import CompilerService
 from app.services.compiler.testcase_agent import generate_hidden_testcases
 from app.services.mcp.service import MCPService
+from app.services.aries.memory import memory_service
 import json
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,18 @@ router = APIRouter()
 async def run_python(req: RunPythonRequest):
     try:
         result = await CompilerService.run_python(req.code, req.stdin)
+
+        # Persist Result
+        if req.session_id:
+            await memory_service.record_code_activity(
+                session_id=req.session_id,
+                username=req.username or "anonymous",
+                code=req.code,
+                activity_type="run_raw",
+                results=result,
+                status="Success" if result["exit_code"] == 0 else "Error",
+            )
+
         return RunPythonResponse(**result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -37,6 +50,19 @@ async def run_examples(req: RunExamplesRequest):
             req.public_cases_count or 9999,
             req.order_independent,
         )
+
+        # Persist Results
+        if req.session_id:
+            passed_all = all(r.get("passed", False) for r in results)
+            await memory_service.record_code_activity(
+                session_id=req.session_id,
+                username=req.username or "anonymous",
+                code=req.code,
+                activity_type="run_examples",
+                results=results,
+                status="Passed" if passed_all else "Failed",
+            )
+
         return RunExamplesResponse(results=results, stderr=err_str)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -93,6 +119,19 @@ async def submit_code(req: SubmitRequest):
             public_cases_count,
             "in any order" in html_content.lower(),
         )
+
+        # Persist Results (Episodic Context)
+        if req.session_id:
+            passed_all = all(r.get("passed", False) for r in results)
+            await memory_service.record_code_activity(
+                session_id=req.session_id,
+                username=req.username or "anonymous",
+                code=req.code,
+                activity_type="submit",
+                results=results,
+                status="Accepted" if passed_all else "Failed",
+            )
+
         return RunExamplesResponse(results=results, stderr=err_str)
     except Exception as e:
         logger.exception("submit failed")

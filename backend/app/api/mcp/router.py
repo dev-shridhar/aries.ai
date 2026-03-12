@@ -4,6 +4,7 @@ import re
 from fastapi import APIRouter, HTTPException
 
 from app.services.mcp.service import MCPService
+from app.services.aries.memory import memory_service
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +117,9 @@ async def get_cached_problems():
 
 
 @router.get("/problem/{slug}")
-async def get_problem(slug: str):
+async def get_problem(
+    slug: str, session_id: str | None = None, username: str | None = None
+):
     try:
         async with mcp_service.get_session() as (session, _):
             raw = await mcp_service.call_tool(
@@ -126,6 +129,16 @@ async def get_problem(slug: str):
         problem = data.get("problem", data)
         if not problem or not problem.get("title"):
             raise HTTPException(status_code=404, detail="Problem not found")
+
+        # Unified Memory: Log Load Event
+        if session_id:
+            await memory_service.record_event(
+                session_id=session_id,
+                username=username or "anonymous",
+                event_type="LOAD_PROBLEM",
+                details={"slug": slug, "title": problem.get("title")},
+            )
+
         snippets = problem.get("codeSnippets") or []
         python_code = next(
             (
