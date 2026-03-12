@@ -1,50 +1,24 @@
-import asyncio
 import json
-import os
 import re
-import tempfile
 from typing import Any
+from app.infrastructure.compiler.executor import compiler_infra
+
 
 class CompilerService:
     """Service to safely sandbox and execute Python code."""
-    
-    @staticmethod
-    async def run_python(code: str, stdin: str = "") -> dict[str, Any]:
-        """Run standalone Python code with a 5s timeout."""
-        try:
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-                full_code = (
-                    "from typing import *\nfrom collections import *\nfrom heapq import *\nfrom bisect import *\nimport math\n\n"
-                    + code
-                )
-                f.write(full_code)
-                path = f.name
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    "python3",
-                    path,
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(input=stdin.encode() if stdin else None),
-                    timeout=5.0,
-                )
-                return {
-                    "stdout": stdout.decode(),
-                    "stderr": stderr.decode(),
-                    "exit_code": proc.returncode or 0,
-                }
-            finally:
-                os.unlink(path)
-        except asyncio.TimeoutError:
-            raise Exception("Execution timed out (max 5s)")
-        except Exception as e:
-            raise Exception(f"run_python failed: {str(e)}")
 
     @staticmethod
-    async def run_examples(code: str, raw_examples: str, expected_outputs: list[str], public_cases_count: int, order_independent: bool = False) -> tuple[list[dict], str]:
+    async def run_python(code: str, stdin: str = "") -> dict[str, Any]:
+        return await compiler_infra.run_raw_python(code, stdin)
+
+    @staticmethod
+    async def run_examples(
+        code: str,
+        raw_examples: str,
+        expected_outputs: list[str],
+        public_cases_count: int,
+        order_independent: bool = False,
+    ) -> tuple[list[dict], str]:
         """Run user code against multiple example test cases using a driver script."""
         expected_outputs_json = json.dumps(expected_outputs)
         examples_json = json.dumps(raw_examples)
@@ -126,6 +100,8 @@ def run_all_tests(raw_examples, expected_outputs):
                             if __ORDER_INDEPENDENT__ and not passed and isinstance(result_val, list) and isinstance(parsed_expected, list):
                                 try:
                                     passed = sorted(result_val) == sorted(parsed_expected)
+                                try:
+                                    passed = sorted(result_val) == sorted(parsed_expected)
                                 except Exception:
                                     pass
                         expected_serialization = serialize(parsed_expected)
@@ -158,37 +134,30 @@ if __name__ == "__main__":
         driver = driver.replace("__EXAMPLES_JSON__", examples_json)
         driver = driver.replace("__EXPECTED_JSON__", expected_outputs_json)
         driver = driver.replace("__PUBLIC_CASES_COUNT__", str(public_cases_count))
-        driver = driver.replace("__ORDER_INDEPENDENT__", "True" if order_independent else "False")
-        
-        try:
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-                f.write(driver)
-                path = f.name
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    "python3",
-                    path,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10.0)
-                out_str = stdout.decode().strip()
-                err_str = stderr.decode().strip()
+        driver = driver.replace(
+            "__ORDER_INDEPENDENT__", "True" if order_independent else "False"
+        )
 
-                try:
-                    results = json.loads(out_str) if out_str else []
+        try:
+            out_str, err_str = await compiler_infra.run_driver_script(driver)
+
+            try:
+                results = json.loads(out_str) if out_str else []
+                results = [dict(r) | {"verified": False} for r in results]
+                return results, err_str
+            except json.JSONDecodeError:
+                match = re.search(r"\[.*\]", out_str, re.DOTALL)
+                if match:
+                    results = json.loads(match.group(0))
                     results = [dict(r) | {"verified": False} for r in results]
                     return results, err_str
-                except json.JSONDecodeError:
-                    match = re.search(r"\[.*\]", out_str, re.DOTALL)
-                    if match:
-                        results = json.loads(match.group(0))
-                        results = [dict(r) | {"verified": False} for r in results]
-                        return results, err_str
-                    return [{"input": "All", "error": "Execution failed to return valid JSON. Output: " + out_str, "verified": False}], err_str
-            finally:
-                os.unlink(path)
-        except asyncio.TimeoutError:
-            raise Exception("Execution timed out (max 10s)")
+                return [
+                    {
+                        "input": "All",
+                        "error": "Execution failed to return valid JSON. Output: "
+                        + out_str,
+                        "verified": False,
+                    }
+                ], err_str
         except Exception as e:
             raise Exception(f"run_examples failed: {str(e)}")
