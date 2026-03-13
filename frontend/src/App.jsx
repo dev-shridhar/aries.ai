@@ -25,6 +25,8 @@ function App() {
   const [ariesBubble, setAriesBubble] = useState('')
   const [showAriesBubble, setShowAriesBubble] = useState(false)
   const [toasts, setToasts] = useState([])
+  const [currentSessionId, setCurrentSessionId] = useState('')
+  const [currentUsername, setCurrentUsername] = useState('anonymous')
   const codeEditorRef = useRef(null)
 
   const fetchProblemsList = async (query = '', diff = '') => {
@@ -33,6 +35,8 @@ function App() {
       const params = new URLSearchParams({ limit: '50' })
       if (query) params.set('q', query)
       if (diff) params.set('difficulty', diff)
+      if (currentSessionId) params.set('session_id', currentSessionId)
+      if (currentUsername) params.set('username', currentUsername)
       const res = await fetch('/api/search?' + params)
       if (res.ok) {
         const data = await res.json()
@@ -82,8 +86,14 @@ function App() {
     setShowTestResults(false)
 
     try {
+      const qParams = new URLSearchParams()
+      if (currentSessionId) qParams.set('session_id', currentSessionId)
+      if (currentUsername) qParams.set('username', currentUsername)
+
+      const finalQuery = qParams.toString() ? `?${qParams.toString()}` : ''
+
       if (slug === 'daily-challenge') {
-        const dailyRes = await fetch('/api/daily')
+        const dailyRes = await fetch('/api/daily' + finalQuery)
         if (dailyRes.ok) {
           const dailyData = await dailyRes.json()
           targetSlug = dailyData.slug
@@ -91,7 +101,7 @@ function App() {
         }
       }
 
-      const res = await fetch('/api/problem/' + encodeURIComponent(targetSlug))
+      const res = await fetch(`/api/problem/${encodeURIComponent(targetSlug)}${finalQuery}`)
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         setCurrentProblem({ error: err.detail || res.statusText || 'Failed to load' })
@@ -128,7 +138,28 @@ function App() {
     console.log('Aries Action:', action, payload);
     if (action === 'LOAD_PROBLEM' && payload?.slug) {
       loadProblem(payload.slug);
-      addToast(`Aries loaded: ${payload.slug}`, 'success');
+      addToast(`Aries loading: ${payload.slug}`, 'success');
+    } else if (action === 'SEARCH_PROBLEMS' && payload?.query) {
+      setView('problems');
+      setSearchQuery(payload.query);
+      fetchProblemsList(payload.query);
+      addToast(`Aries searching: ${payload.query}`, 'info');
+    } else if (action === 'RUN_CODE') {
+      setView('solve');
+      handleRun();
+      addToast(`Aries running code...`, 'info');
+    } else if (action === 'SUBMIT_CODE') {
+      setView('solve');
+      handleSubmit();
+      addToast(`Aries submitting code...`, 'success');
+    } else if (action === 'NAVIGATE' && payload?.view) {
+      const targetView = payload.view.toLowerCase();
+      if (['home', 'problems', 'solve'].includes(targetView)) {
+        setView(targetView);
+        addToast(`Aries navigating to ${targetView}`, 'info');
+      }
+    } else if (action === 'RECORD_FACT') {
+      addToast(`Aries learned: ${payload.concept}`, 'success');
     }
   }
 
@@ -157,7 +188,9 @@ function App() {
           examples: currentProblem.exampleTestcases,
           expected_outputs: currentProblem.expectedOutputs,
           public_cases_count: currentProblem.expectedOutputs.length,
-          order_independent: currentProblem.orderIndependent
+          order_independent: currentProblem.orderIndependent,
+          session_id: currentSessionId,
+          username: currentUsername
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -195,7 +228,9 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           code,
-          slug: currentProblemSlug
+          slug: currentProblemSlug,
+          session_id: currentSessionId,
+          username: currentUsername
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -657,6 +692,10 @@ function App() {
       <VoiceAgent
         currentCode={code}
         onAction={handleAriesAction}
+        onSessionInit={(sid, user) => {
+          setCurrentSessionId(sid);
+          setCurrentUsername(user);
+        }}
       />
 
 
