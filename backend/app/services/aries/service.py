@@ -155,9 +155,10 @@ class AriesService:
 
             # 2. Specialized Welcome Prompt (Concise: 15-20 words)
             welcome_prompt = (
-                "You are Aries, a high-performance DSA AI tutor. The user has just landed. "
+                "You are Delia, a high-performance Coding Companion AI. The user has just landed. "
                 "Enthusiastically welcome them in exactly one short sentence (max 15 words). "
-                f"Mention today's challenge: {daily_title}."
+                f"Mention today's challenge: {daily_title}. "
+                "IMPORTANT: Tell them to say 'Hey Aries' whenever they need your help."
             )
 
             from app.core.config import settings
@@ -182,7 +183,7 @@ class AriesService:
 
                 if (
                     any(punct in chunk for punct in [".", "?", "!"])
-                    and len(sentence_buffer) > 15
+                    and len(sentence_buffer) > 10
                 ):
                     logger.info(
                         f"Welcome TTS triggering for sentence: '{sentence_buffer.strip()}'"
@@ -261,13 +262,13 @@ class AriesService:
             if is_wake_only:
                 if not user_name:
                     system_prompt = (
-                        "You are Aries. The user just woke you up with 'Hey Aries'. "
-                        "Provide a ultra-concise overview (5-10 words) of your mission as a DSA AI tutor. "
+                        "You are Delia. The user just woke you up with 'Hey Aries'. "
+                        "Provide a ultra-concise overview (5-10 words) of your mission as a Coding Companion. "
                         "Then ask 'What should I call you?'. "
                         "BE EXTREMELY BRIEF AND STOP THERE."
                     )
                 else:
-                    system_prompt = f"You are Aries. {user_name} just woke you up with 'Hey Aries'. Briefly (under 10 words) ask how you can help them today."
+                    system_prompt = f"You are Delia. {user_name} just woke you up with 'Hey Aries'. Briefly (under 10 words) ask how you can help them today."
                 logger.info(
                     f"Wake word only detected. Forcing brief response for {'unknown' if not user_name else 'known'} user."
                 )
@@ -292,7 +293,7 @@ class AriesService:
                 # Using a slightly more robust regex or set of punctuation
                 if (
                     any(punct in chunk for punct in [".", "?", "!"])
-                    and len(sentence_buffer) > 15
+                    and len(sentence_buffer) > 10
                 ):
                     logger.info("Generating audio for sentence chunk...")
                     audio_bytes = await self.tts.speak(sentence_buffer.strip())
@@ -350,20 +351,29 @@ class AriesService:
     ) -> str:
         current_code = code_context or context.get("current_code") or ""
         current_problem = context.get("current_problem")
-        
+
         # Check for user name in context
-        user_name = next((f["content"] for f in context.get("user_facts", []) if "real_name" in f["concept"]), None)
+        user_name = next(
+            (
+                f["content"]
+                for f in context.get("user_facts", [])
+                if "real_name" in f["concept"]
+            ),
+            None,
+        )
 
         system_prompt = self.skill_manager.get_system_prompt(skill_id, current_code)
 
         if not user_name:
             system_prompt += (
                 "\n\nCRITICAL: You do not know the user's name yet. If they say 'Hey Aries' or introduce themselves, "
-                "give a 5-10 word overview of your mission as a DSA AI tutor and ask 'What should I call you?'. "
+                "give a 5-10 word overview of your mission as a Coding Companion and ask 'What should I call you?'. "
                 "Once they provide a name, you MUST record it using `[RECORD_FACT: real_name | the_name]`."
             )
         else:
-            system_prompt += f"\n\nYou are talking to {user_name}. Use their name occasionally."
+            system_prompt += (
+                f"\n\nYou are talking to {user_name}. Use their name occasionally."
+            )
 
         if current_problem:
             title = current_problem.get("title", "Unknown")
@@ -376,6 +386,9 @@ class AriesService:
 
                 desc = re.sub("<[^<]+?>", "", current_problem.get("description", ""))
                 system_prompt += f"Problem Details: {desc[:500]}...\n"
+
+        code_results = context.get("code_results", [])
+        semantic_hits = context.get("semantic_hits", [])
 
         if code_results:
             system_prompt += "\nRecent Code Execution Results:\n"

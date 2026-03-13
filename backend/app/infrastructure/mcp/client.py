@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
 from mcp import ClientSession, StdioServerParameters
@@ -12,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 class MCPInfrastructure:
     LEETCODE_SERVER_COMMAND = "npx"
+    _cached_session: tuple[ClientSession, Any] | None = None
+    _lock = asyncio.Lock()
 
     def _get_server_args(self) -> list[str]:
         args = ["-y", "@jinzcdev/leetcode-mcp-server"]
@@ -20,54 +23,58 @@ class MCPInfrastructure:
             args.extend(["--session-cookie", session_cookie])
         return args
 
+    async def _ensure_session(self):
+        """Ensure we have a cached session."""
+        if self._cached_session is None:
+            async with self._lock:
+                if self._cached_session is None:
+                    from contextlib import AsyncExitStack
+
+                    exit_stack = AsyncExitStack()
+                    server_params = StdioServerParameters(
+                        command=self.LEETCODE_SERVER_COMMAND,
+                        args=self._get_server_args(),
+                        env=dict(os.environ),
+                    )
+                    stdio_transport = await exit_stack.enter_async_context(
+                        stdio_client(server_params)
+                    )
+                    stdio, write = stdio_transport
+                    session = await exit_stack.enter_async_context(
+                        ClientSession(stdio, write)
+                    )
+                    await session.initialize()
+                    self._cached_session = (session, exit_stack)
+                    logger.info("MCP session initialized")
+        return self._cached_session
+
     @asynccontextmanager
     async def get_session(
         self,
     ) -> AsyncGenerator[tuple[ClientSession, list[dict]], None]:
-        from contextlib import AsyncExitStack
+        session, exit_stack = await self._ensure_session()
 
-        exit_stack = AsyncExitStack()
-        try:
-            server_params = StdioServerParameters(
-                command=self.LEETCODE_SERVER_COMMAND,
-                args=self._get_server_args(),
-                env=dict(os.environ),
+        list_tools_response = await session.list_tools()
+        tools = list_tools_response.tools
+        groq_tools = []
+        for tool in tools:
+            schema = (
+                getattr(tool, "input_schema", None)
+                or getattr(tool, "inputSchema", None)
+                or {"type": "object", "properties": {}}
             )
-            stdio_transport = await exit_stack.enter_async_context(
-                stdio_client(server_params)
+            groq_tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description or "",
+                        "parameters": schema,
+                    },
+                }
             )
-            stdio, write = stdio_transport
-            session = await exit_stack.enter_async_context(ClientSession(stdio, write))
-            await session.initialize()
 
-            list_tools_response = await session.list_tools()
-            tools = list_tools_response.tools
-
-            # Format tool schema for standard AI usage if needed
-            groq_tools = []
-            for tool in tools:
-                schema = (
-                    getattr(tool, "input_schema", None)
-                    or getattr(tool, "inputSchema", None)
-                    or {"type": "object", "properties": {}}
-                )
-                groq_tools.append(
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": tool.name,
-                            "description": tool.description or "",
-                            "parameters": schema,
-                        },
-                    }
-                )
-
-            yield session, groq_tools
-        except McpError as e:
-            logger.error(f"MCP Infrastructure error: {e}")
-            raise
-        finally:
-            await exit_stack.aclose()
+        yield session, groq_tools
 
     async def call_tool(
         self, session: ClientSession, name: str, arguments: dict

@@ -27,6 +27,10 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ currentCode, onAction, onSessio
     }, [onSessionInit]);
 
     const handleAudioChunk = useCallback((chunk: string) => {
+        // When we receive audio, we're now speaking (not thinking)
+        setIsThinking(false);
+        setIsListening(false);
+        
         audioQueueRef.current.push(chunk);
         if (!isPlayingRef.current) {
             processAudioQueue();
@@ -47,18 +51,8 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ currentCode, onAction, onSessio
             if (onSessionInitRef.current) {
                 onSessionInitRef.current(sessionId, username);
             }
-
-            // Auto-trigger welcome after 1 second of connection
-            if (isFirstActivationRef.current) {
-                const timer = setTimeout(() => {
-                    console.log("Aries: Auto-triggering welcome message...");
-                    sendVoiceRequest({ event: "WELCOME" } as any);
-                    isFirstActivationRef.current = false;
-                }, 1000);
-                return () => clearTimeout(timer);
-            }
         }
-    }, [isConnected, sendVoiceRequest, sessionId, username]);
+    }, [isConnected, sessionId, username]);
     // Removed onSessionInit from dependencies to keep size stable and avoid re-renders
 
     // Instruction Bubble Cycle
@@ -79,15 +73,35 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ currentCode, onAction, onSessio
     const streamRef = useRef<MediaStream | null>(null);
     const audioQueueRef = useRef<string[]>([]);
     const isPlayingRef = useRef(false);
+    const shouldStartRecordingRef = useRef(false);
 
-    // Handle Voice Responses (Actions only now)
+    // Handle Voice Responses
     useEffect(() => {
         if (lastResponse) {
+            // When we get audio response, stop recording and play audio
+            if (lastResponse.audio_chunk) {
+                console.log("Aries UI: Received audio response, stopping recording");
+                stopRecording();
+                setIsThinking(false);
+                setIsListening(false);
+            }
+            
             if (lastResponse.action === "SENSORY: WAKE") {
                 console.log("WAKE WORD DETECTED: Glow active!");
                 setIsThinking(true); 
+            } else if (lastResponse.action === "SENSORY: PROCESSING") {
+                console.log("PROCESSING: Aries is thinking");
+                setIsListening(false);
+                setIsThinking(true);
+                setIsSpeaking(false);
             } else if (lastResponse.action && onAction) {
                 onAction(lastResponse.action, lastResponse.action_payload);
+            }
+            
+            // When audio chunk arrives, we're speaking (not thinking anymore)
+            if (lastResponse.audio_chunk) {
+                setIsThinking(false);
+                setIsListening(false);
             }
         }
     }, [lastResponse, onAction]);
@@ -96,6 +110,13 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ currentCode, onAction, onSessio
         if (audioQueueRef.current.length === 0) {
             isPlayingRef.current = false;
             setIsSpeaking(false);
+            
+            // If welcome audio completed, start recording
+            if (shouldStartRecordingRef.current) {
+                shouldStartRecordingRef.current = false;
+                console.log("Aries UI: Welcome audio done, starting recording");
+                startRecording();
+            }
             return;
         }
 
@@ -111,7 +132,14 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ currentCode, onAction, onSessio
         
         const audio = new Audio(`data:audio/mpeg;base64,${base64Audio}`);
         audio.onended = () => {
-            processAudioQueue();
+            // Check if we should start recording after audio
+            if (shouldStartRecordingRef.current) {
+                console.log("Aries UI: Audio done, starting recording");
+                shouldStartRecordingRef.current = false;
+                startRecording();
+            } else {
+                processAudioQueue();
+            }
         };
         audio.play().catch(err => {
             console.error("Aries UI: Audio playback error:", err);
@@ -131,31 +159,62 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ currentCode, onAction, onSessio
     const startRecording = async () => {
         setAiResponse(""); // Clear previous Aries response
         audioQueueRef.current = []; // Clear stale audio
+        setIsThinking(false);  // Stop thinking
+        setIsSpeaking(false);   // Not speaking yet
+        setIsListening(true);   // Now listening
+        
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log("Aries UI: Requesting microphone access...");
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    sampleRate: 16000,
+                    echoCancellation: true,
+                    noiseSuppression: true
+                } 
+            });
+            console.log("Aries UI: Microphone access granted, tracks:", stream.getTracks().length);
+            
             if (!isActiveRef.current) {
                 stream.getTracks().forEach(track => track.stop());
                 return;
             }
 
             streamRef.current = stream;
-            // Use 250ms slices for real-time streaming
+            
+            // Use MediaRecorder to capture complete audio
+            const audioChunks: Blob[] = [];
             const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
             mediaRecorderRef.current = mediaRecorder;
 
             mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
-                    // console.debug(`Aries: Sending audio blob of size ${event.data.size}`);
-                    sendVoiceChunk(event.data);
+                    audioChunks.push(event.data);
                 }
             };
 
-            mediaRecorder.onstop = () => {
+            mediaRecorder.onstop = async () => {
+                console.log("Aries UI: Recording stopped, processing audio");
                 setIsListening(false);
+                
+                // Combine all chunks into single blob
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                
+                // Convert to base64 and send
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64 = (reader.result as string).split(',')[1];
+                    sendVoiceRequest({ audio_chunk: base64 });
+                };
+                reader.readAsDataURL(audioBlob);
             };
 
-            mediaRecorder.start(250);
+            mediaRecorder.onerror = (event: any) => {
+                console.error("Aries UI: MediaRecorder error:", event);
+            };
+
+            mediaRecorder.start(1000);  // Collect in 1sec chunks
             setIsListening(true);
+            console.log("Aries UI: Recording started");
             
             // Send metadata to backend
             sendVoiceRequest({
@@ -184,20 +243,26 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ currentCode, onAction, onSessio
             setIsActive(true);
             isActiveRef.current = true;
             
-            if (isAudioBlocked) {
-                console.log("Aries UI: Resuming blocked audio queue...");
+            // Play any queued welcome audio first
+            if (audioQueueRef.current.length > 0) {
+                console.log("Aries UI: Playing queued audio first...");
                 setIsAudioBlocked(false);
+                setIsThinking(true);
                 processAudioQueue();
+            } else {
+                // No queued audio - start recording immediately
+                console.log("Aries UI: Starting recording immediately");
+                setIsThinking(false);
+                startRecording();
             }
-
-            // Activation: Start recording
-            startRecording();
         } else {
+            // Deactivate
             isActiveRef.current = false;
             stopRecording();
             setIsActive(false);
             setIsSpeaking(false);
             setIsThinking(false);
+            setIsListening(false);
             audioQueueRef.current = [];
         }
     };

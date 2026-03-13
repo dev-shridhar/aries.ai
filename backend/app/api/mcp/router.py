@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -142,6 +143,7 @@ async def get_problem(
             raise HTTPException(status_code=404, detail="Problem not found")
 
         # Unified Memory: Log Load Event & Sync Hot Context
+        html_content = problem.get("content", "")
         if session_id:
             await memory_service.record_event(
                 session_id=session_id,
@@ -186,7 +188,6 @@ async def get_problem(
             )
         problem["pythonStub"] = python_code
 
-        html_content = problem.get("content", "")
         if html_content:
             problem["expectedOutputs"] = extract_expected_outputs(html_content)
             problem["orderIndependent"] = "in any order" in html_content.lower()
