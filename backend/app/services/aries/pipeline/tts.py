@@ -1,10 +1,10 @@
-import os
 import httpx
+from app.core.config import settings
 
 
 class TTSAdapter:
     def __init__(self):
-        self.api_key = os.getenv("DEEPGRAM_API_KEY")
+        self.api_key = settings.DEEPGRAM_API_KEY
         self.base_url = "https://api.deepgram.com/v1/speak?model=aura-asteria-en"
 
     async def speak(self, text: str) -> bytes:

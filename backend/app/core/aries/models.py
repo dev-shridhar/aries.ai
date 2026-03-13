@@ -19,6 +19,8 @@ class VoiceResponse(BaseModel):
     audio_chunk: Optional[str] = None
     action: Optional[str] = None
     action_payload: Optional[Any] = None
+    is_final: Optional[bool] = None
+    speech_final: Optional[bool] = None
 
 
 class SkillDefinition(BaseModel):

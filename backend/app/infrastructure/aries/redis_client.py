@@ -8,7 +8,12 @@ logger = logging.getLogger(__name__)
 
 
 class AriesRedisClient:
-    def __init__(self, host: str = "localhost", port: int = 6379, db: int = 0):
+    def __init__(
+        self,
+        host: str = settings.REDIS_HOST,
+        port: int = settings.REDIS_PORT,
+        db: int = 0,
+    ):
         self.url = f"redis://{host}:{port}/{db}"
         self.client: Optional[redis.Redis] = None
 
@@ -44,7 +49,14 @@ class AriesRedisClient:
         """Retrieves the current session context."""
         key = self._get_context_key(session_id)
         messages = await self.client.lrange(key, 0, -1)
-        return [json.loads(m) for m in messages]
+        # Map 'aries' -> 'assistant' for LLM compatibility
+        history = []
+        for m in messages:
+            msg = json.loads(m)
+            if msg.get("role") == "aries":
+                msg["role"] = "assistant"
+            history.append(msg)
+        return history
 
     # --- State Management ---
 
@@ -60,7 +72,6 @@ class AriesRedisClient:
         return await self.client.get(key)
 
     # --- Code Context ---
-
     def _get_code_key(self, session_id: str) -> str:
         return f"aries:session:{session_id}:code"
 
@@ -71,6 +82,19 @@ class AriesRedisClient:
     async def get_current_code(self, session_id: str) -> Optional[str]:
         key = self._get_code_key(session_id)
         return await self.client.get(key)
+
+    # --- Problem Context ---
+    def _get_problem_key(self, session_id: str) -> str:
+        return f"aries:session:{session_id}:problem"
+
+    async def set_current_problem(self, session_id: str, problem_data: dict):
+        key = self._get_problem_key(session_id)
+        await self.client.set(key, json.dumps(problem_data), ex=3600)
+
+    async def get_current_problem(self, session_id: str) -> Optional[dict]:
+        key = self._get_problem_key(session_id)
+        raw = await self.client.get(key)
+        return json.loads(raw) if raw else None
 
 
 # Global instances can be initialized in app lifetime

@@ -8,14 +8,32 @@ class ActionTrigger:
         Detects if the LLM response contains a structured action trigger.
         Example: [LOAD_PROBLEM: reverse-linked-list]
         """
-        # Simple string-based detection for now.
-        # In a production app, we might use JSON Mode or Tool Calling.
-        if "[LOAD_PROBLEM:" in llm_response:
-            try:
-                slug = llm_response.split("[LOAD_PROBLEM:")[1].split("]")[0].strip()
-                return {"action": "LOAD_PROBLEM", "payload": {"slug": slug}}
-            except:
-                pass
+        import re
+
+        # Regex for [ACTION: optional_payload]
+        # Allowing optional space before colon and after
+        pattern = r"\[([A-Z_]+)\s*(?::\s*([^\]]+))?\]"
+        match = re.search(pattern, llm_response, re.IGNORECASE)
+
+        if match:
+            action = match.group(1).upper()
+            payload_str = match.group(2).strip() if match.group(2) else ""
+
+            if action == "LOAD_PROBLEM":
+                return {"action": "LOAD_PROBLEM", "payload": {"slug": payload_str}}
+            elif action == "SEARCH_PROBLEMS":
+                return {"action": "SEARCH_PROBLEMS", "payload": {"query": payload_str}}
+            elif action == "RUN_CODE":
+                return {"action": "RUN_CODE", "payload": {}}
+            elif action == "SUBMIT_CODE":
+                return {"action": "SUBMIT_CODE", "payload": {}}
+            elif action == "NAVIGATE":
+                return {"action": "NAVIGATE", "payload": {"view": payload_str}}
+            elif action == "RECORD_FACT":
+                parts = payload_str.split("|", 1)
+                concept = parts[0].strip() if len(parts) > 0 else "unknown"
+                value = parts[1].strip() if len(parts) > 1 else ""
+                return {"action": "RECORD_FACT", "payload": {"concept": concept, "value": value}}
 
         return None
 

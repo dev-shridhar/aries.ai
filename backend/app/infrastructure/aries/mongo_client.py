@@ -3,13 +3,16 @@ from typing import Optional, List, Any
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import datetime
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 class AriesMongoClient:
     def __init__(
-        self, uri: str = "mongodb://localhost:27017", database: str = "dsa_agent"
+        self,
+        uri: str = settings.MONGO_URI,
+        database: str = settings.MONGO_DB,
     ):
         self.uri = uri
         self.db_name = database
@@ -23,12 +26,24 @@ class AriesMongoClient:
             logger.info(f"Connected to MongoDB at {self.uri}")
             # Ensure indexes
             await self.db.episodic_memory.create_index([("session_id", 1)])
+            await self.db.episodic_memory.create_index([("user_id", 1)])
+            await self.db.episodic_memory.create_index([("timestamp", -1)])
             await self.db.user_profiles.create_index([("username", 1)], unique=True)
             await self.db.code_sessions.create_index([("session_id", 1)])
             await self.db.code_sessions.create_index([("username", 1)])
+            await self.db.code_sessions.create_index(
+                [("username", 1), ("session_id", 1)]
+            )
             await self.db.code_sessions.create_index([("timestamp", -1)])
             await self.db.semantic_knowledge.create_index([("concept", 1)])
             await self.db.semantic_knowledge.create_index([("skill_id", 1)])
+            await self.db.semantic_knowledge.create_index(
+                [("concept", "text"), ("content", "text")]
+            )
+
+            await self.db.submissions.create_index([("problem_slug", 1)])
+            await self.db.submissions.create_index([("username", 1)])
+            await self.db.submissions.create_index([("timestamp", -1)])
 
     async def disconnect(self):
         if self.client:
@@ -108,6 +123,38 @@ class AriesMongoClient:
         ]
 
         cursor = self.db.semantic_knowledge.find(filter_q).limit(limit)
+        return await cursor.to_list(length=limit)
+
+    async def semantic_search(
+        self, vector: List[float], skill_id: Optional[str] = None, limit: int = 3
+    ) -> List[dict]:
+        """
+        Performs vector search on semantic knowledge.
+        Requires a Vector Index in MongoDB Atlas.
+        For local dev, we fall back to returning recent facts in the skill area.
+        """
+        # In a real Atlas environment:
+        # pipeline = [
+        #     {
+        #         "$vectorSearch": {
+        #             "index": "vector_index",
+        #             "path": "vector_embedding",
+        #             "queryVector": vector,
+        #             "numCandidates": 100,
+        #             "limit": limit
+        #         }
+        #     }
+        # ]
+        # if skill_id:
+        #     pipeline.insert(1, {"$match": {"skill_id": skill_id}})
+        # cursor = self.db.semantic_knowledge.aggregate(pipeline)
+        
+        # Local Fallback: return most recent similar skills
+        filter_q = {}
+        if skill_id:
+            filter_q["skill_id"] = skill_id
+        
+        cursor = self.db.semantic_knowledge.find(filter_q).sort("timestamp", -1).limit(limit)
         return await cursor.to_list(length=limit)
 
     # --- Code Sessions & Execution Results ---

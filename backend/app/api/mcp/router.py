@@ -64,6 +64,17 @@ async def search_problems(q: str = "", difficulty: str | None = None, limit: int
             if isinstance(data, dict)
             else []
         )
+
+        # Log Search Event for Agent Omniscience
+        asyncio.create_task(
+            memory_service.record_event(
+                session_id="default-session",  # Will be refined by state
+                username=args.get("username", "anonymous"),
+                event_type="SEARCH_PROBLEMS",
+                details={"query": q, "results_count": len(problems)},
+            )
+        )
+
         return {
             "problems": [
                 {
@@ -130,13 +141,29 @@ async def get_problem(
         if not problem or not problem.get("title"):
             raise HTTPException(status_code=404, detail="Problem not found")
 
-        # Unified Memory: Log Load Event
+        # Unified Memory: Log Load Event & Sync Hot Context
         if session_id:
             await memory_service.record_event(
                 session_id=session_id,
                 username=username or "anonymous",
                 event_type="LOAD_PROBLEM",
                 details={"slug": slug, "title": problem.get("title")},
+            )
+            # Sync to Hot Context (Redis)
+            await memory_service.set_current_problem(
+                session_id=session_id,
+                problem_data={
+                    "slug": slug,
+                    "title": problem.get("title"),
+                    "description": html_content[:500],  # Snippet for context
+                },
+            )
+
+            # Trigger Summarization for Semantic Memory (Non-blocking)
+            asyncio.create_task(
+                memory_service.summarize_and_store_problem(
+                    slug=slug, title=problem.get("title", ""), description=html_content
+                )
             )
 
         snippets = problem.get("codeSnippets") or []

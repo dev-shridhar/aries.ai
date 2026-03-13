@@ -13,8 +13,10 @@ from app.infrastructure.aries.redis_client import aries_redis
 from app.infrastructure.aries.mongo_client import aries_mongo
 from contextlib import asynccontextmanager
 
+from app.core.config import settings
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG if settings.debug else logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[logging.FileHandler("app.log"), logging.StreamHandler(sys.stderr)],
 )
@@ -49,5 +51,5 @@ app.add_middleware(
 
 app.include_router(mcp_router, prefix="/api", tags=["mcp"])
 app.include_router(compiler_router, prefix="/api", tags=["compiler"])
-app.include_router(voice_router, prefix="/api", tags=["voice"])
+app.include_router(voice_router, prefix="/api/aries", tags=["voice"])
 app.include_router(user_router, prefix="/api", tags=["user"])
