@@ -23,6 +23,7 @@ class BrainAdapter:
         """
         Generates a text response using the specified provider.
         """
+        logger.info(f"BRAIN: Active Provider={provider}, Model={model}")
         if provider == "groq":
             return await self._groq_inference(text, system_prompt, history, model)
         elif provider == "ollama":
@@ -125,19 +126,22 @@ class BrainAdapter:
                 messages.extend(history)
             messages.append({"role": "user", "content": text})
 
-            logger.info(f"Sending request to Groq with {len(messages)} messages")
+            logger.info(f"GROQ: Requesting completion for model {model} (timeout=15s)...")
             # Log first message content (system prompt) for health check but truncated
-            logger.debug(f"System Prompt: {system_prompt[:200]}...")
+            logger.debug(f"GROQ: System Prompt (truncated): {system_prompt[:200]}...")
 
             completion = await self.groq_client.chat.completions.create(
                 messages=messages,
                 model=model,
+                timeout=15.0,
             )
-            return completion.choices[0].message.content
+            content = completion.choices[0].message.content
+            logger.info(f"GROQ: Received response ({len(content)} chars).")
+            return content
         except Exception as e:
-            logger.error(f"Groq Inference Failed: {str(e)}")
+            logger.error(f"GROQ: Inference Failed: {str(e)}")
             # Log the full messages list only on error to avoid log bloat
-            logger.error(f"Failed Messages Payload: {messages}")
+            logger.error(f"GROQ: Failed Messages Payload: {messages}")
             return "I'm having trouble thinking through Groq right now."
 
     async def get_embedding(
@@ -152,7 +156,7 @@ class BrainAdapter:
                 resp = await client.post(
                     "http://localhost:11434/api/embeddings",
                     json={"model": model, "prompt": text},
-                    timeout=5.0, # Shorter timeout for smoother fallback
+                    timeout=1.0, # Shorter timeout for faster fallback
                 )
                 resp.raise_for_status()
                 data = resp.json()

@@ -690,6 +690,7 @@ function App() {
       )}
 
       <VoiceAgent
+        view={view}
         currentCode={code}
         onAction={handleAriesAction}
         onSessionInit={(sid, user) => {

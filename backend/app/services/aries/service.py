@@ -2,6 +2,8 @@ import logging
 import base64
 import json
 import asyncio
+import time
+import re
 from app.services.aries.memory import memory_service
 from app.services.aries.pipeline.stt import stt_adapter
 from app.services.aries.pipeline.tts import tts_adapter
@@ -17,91 +19,133 @@ class AriesService:
     def __init__(self):
         self.skill_manager = skill_manager
         self.brain = brain_adapter
-        self.stt = stt_adapter
         self.tts = tts_adapter
         self.actions = action_trigger
+        # STT is handled directly via stt_adapter import/inject if needed, 
+        # but common practice here seems to be using the adapter directly 
+        # or keeping it as an instance var.
+        from app.services.aries.pipeline.stt import stt_adapter
+        self.stt = stt_adapter
 
     async def process_voice_interaction(
         self,
-        audio_b64: str,
+        audio_bytes: bytes,
         session_id: str,
         skill_id: str = "aries-default",
         code_context: str = "",
         username: str = "anonymous",
-    ) -> VoiceResponse:
+    ):
+        """
+        Full discrete voice loop: Audio -> STT -> Brain -> Memory -> TTS -> Audio.
+        Refactored to yield multiple times for streaming feel.
+        """
         try:
-            # 1. Decode Audio and Transcribe
-            if not audio_b64:
-                return VoiceResponse(text="I'm listening, but I didn't hear anything.")
+            import time
+            start_total = time.time()
+            logger.info(f"SERVICE: process_voice_interaction entry. Session: {session_id}, Bytes: {len(audio_bytes)}")
+            
+            # 1. Transcribe (Batch STT)
+            if not audio_bytes:
+                logger.warning("SERVICE: No audio bytes received.")
+                yield VoiceResponse(text="I'm listening, but I didn't hear anything.")
+                return
 
-            logger.info(f"Processing audio chunk for session {session_id}")
-            audio_bytes = base64.b64decode(audio_b64)
+            stt_start = time.time()
+            try:
+                text_input = await self.stt.transcribe(audio_bytes)
+            except Exception as stt_err:
+                logger.error(f"SERVICE: STT Transcription failed: {stt_err}")
+                yield VoiceResponse(text="I had trouble hearing you. Could you repeat that?")
+                return
+            
+            stt_end = time.time()
+            logger.info(f"STT Took: {stt_end - stt_start:.2f}s. Transcript: '{text_input}'")
 
-            # STT Event
-            text_input = await self.stt.transcribe(audio_bytes)
-            logger.info(f"STT Transcript: '{text_input}'")
+            # --- STREAM POINT 0: Show the user what we heard immediately ---
+            yield VoiceResponse(
+                text=text_input,
+                is_final=True, # Mark as STT result for frontend
+                speech_final=False # Keep it until brain response clears it
+            )
 
-            # 1.5 Noise Filtering for Silence
-            # Some STT models return "It" or "..." or "It it is." for background noise
-            is_noise = False
-            if text_input:
-                clean_text = text_input.strip().lower().rstrip(".")
-                if len(clean_text) < 3 or clean_text in [
-                    "it",
-                    "it it is",
-                    "it's",
-                    "yes",
-                    "i",
-                ]:
-                    # These common mis-transcriptions of silence should be treated as empty
-                    is_noise = True
+            # 1.5 Noise/Silence Check
+            if self._is_noise(text_input):
+                 logger.info("Noise or silence detected, skipping brain.")
+                 yield VoiceResponse(text="")
+                 return
 
-            if not text_input or text_input.strip() == "" or is_noise:
-                logger.info(
-                    "Empty or noise transcript detected, returning proactive silence prompt with audio."
-                )
-                txt = "Hey, are you trying to talk? I cannot hear you."
-                audio_bytes_out = await self.tts.speak(txt)
-                audio_b64_out = base64.b64encode(audio_bytes_out).decode("utf-8")
-                return VoiceResponse(text=txt, audio_chunk=audio_b64_out)
-            # 2. Fetch Unified Context (Hot + Episodic + Semantic)
+            # 2. Fetch Unified Context
             context = await memory_service.get_full_context(
                 session_id, username, text_input, skill_id
             )
 
-            # 3. Format Context for LLM
+            # 3. Build System Prompt (includes Name check & Memory Palace)
             system_prompt = await self._build_system_prompt(
                 skill_id, code_context, context
             )
 
-            # 3.5 Update Sensory context (Code)
+            # 3.5 Sync Sensory memory (Code)
             if code_context:
                 await memory_service.set_current_code(session_id, code_context)
 
+            # 4. Query Brain
             from app.core.config import settings
+            logger.info(f"Querying Brain ({settings.BRAIN_MODEL}) with transcript: '{text_input}'")
+            brain_start = time.time()
+            try:
+                ai_text = await self.brain.generate_response(
+                    text_input,
+                    system_prompt,
+                    history=context["history"],
+                    provider=settings.BRAIN_PROVIDER,
+                    model=settings.BRAIN_MODEL,
+                )
+            except Exception as brain_err:
+                logger.error(f"SERVICE: Brain generation failed: {brain_err}")
+                ai_text = "I'm having trouble thinking right now. Let's try again."
 
-            logger.info(
-                f"Querying High-speed Brain ({settings.BRAIN_PROVIDER} {settings.BRAIN_MODEL}) with transcript: '{text_input}'"
-            )
-            ai_text = await self.brain.generate_response(
-                text_input,
-                system_prompt,
-                history=context["history"],
-                provider=settings.BRAIN_PROVIDER,
-                model=settings.BRAIN_MODEL,
-            )
-            logger.info(f"Brain Response: '{ai_text}'")
+            brain_end = time.time()
+            logger.info(f"Brain Took: {brain_end - brain_start:.2f}s. Response: '{ai_text}'")
 
-            # 5. Generate Audio (TTS Event)
-            logger.info("Generating Speech via TTS...")
-            audio_bytes_out = await self.tts.speak(ai_text)
-            audio_b64_out = base64.b64encode(audio_bytes_out).decode("utf-8")
-            logger.info("TTS Generation Complete.")
-
-            # 6. Handle Actions
+            # --- STREAM POINT 1: Yield text immediately to clear Thinking state ---
             action_data = self.actions.parse_action(ai_text)
+            
+            yield VoiceResponse(
+                text=ai_text,
+                action=action_data["action"] if action_data else None,
+                action_payload=action_data["payload"] if action_data else None,
+            )
 
-            # 7. Unified Memory Update (Redis + Mongo)
+            # 5. Generate Audio (TTS)
+            logger.info("Generating Speech via TTS...")
+            tts_start = time.time()
+            try:
+                audio_bytes_out = await self.tts.speak(ai_text)
+            except Exception as tts_err:
+                logger.error(f"SERVICE: TTS generation failed: {tts_err}")
+                audio_bytes_out = b"" # Fallback to text only
+            
+            tts_end = time.time()
+            logger.info(f"TTS Took: {tts_end - tts_start:.2f}s")
+            
+            audio_b64_out = base64.b64encode(audio_bytes_out).decode("utf-8") if audio_bytes_out else None
+            
+            total_time = time.time() - start_total
+            logger.info(f"TOTAL PIPELINE TIME: {total_time:.2f}s")
+
+            # 6. Handle Actions (e.g. RECORD_FACT)
+            if action_data:
+                action = action_data["action"]
+                payload = action_data["payload"]
+
+                if action == "RECORD_FACT":
+                    await memory_service.record_user_fact(
+                        username=username,
+                        concept=payload["concept"],
+                        value=payload["value"],
+                    )
+
+            # 7. Unified Memory Update
             await memory_service.record_interaction(
                 session_id=session_id,
                 username=username,
@@ -110,17 +154,14 @@ class AriesService:
                 skill_id=skill_id,
             )
 
-            return VoiceResponse(
-                text=ai_text,
+            # --- STREAM POINT 2: Yield Final Response with Audio ---
+            yield VoiceResponse(
+                text="", # Text already sent
                 audio_chunk=audio_b64_out,
-                action=action_data["action"] if action_data else None,
-                action_payload=action_data["payload"] if action_data else None,
             )
         except Exception as e:
-            logger.exception("AriesService processing failed")
-            return VoiceResponse(
-                text="I'm sorry, my systems are experiencing a moment of silence."
-            )
+            logger.exception("SERVICE: Fatal error in process_voice_interaction")
+            yield VoiceResponse(text="I'm sorry, my systems are currently unresponsive.")
 
     async def process_welcome_interaction(
         self,
@@ -129,36 +170,24 @@ class AriesService:
         skill_id: str = "aries-default",
     ):
         """
-        Generates an enthusiastic welcome message and streams it.
+        Generates a contextual welcome message based on current problem state.
         """
         try:
-            # 1. Fetch Daily Challenge Info for extra flair
-            daily_title = "today's challenge"
-            try:
-                from app.api.mcp.router import mcp_service  # Reuse logic or import
+            from app.services.aries.memory import memory_service
+            context = await memory_service.get_lightweight_context(session_id)
+            current_problem = context.get("current_problem")
 
-                async with mcp_service.get_session() as (session, _):
-                    raw = await mcp_service.call_tool(
-                        session, "get_daily_challenge", {}
-                    )
-                    data = json.loads(raw)
-                    problem = data.get("problem", data)
-                    question = (
-                        (problem.get("question") or problem)
-                        if isinstance(problem, dict)
-                        else {}
-                    )
-                    if isinstance(question, dict):
-                        daily_title = question.get("title", "today's challenge")
-            except Exception as e:
-                logger.warning(f"Could not fetch daily challenge for welcome: {e}")
-
-            # 2. Specialized Welcome Prompt (Concise: 15-20 words)
-            welcome_prompt = (
-                "You are Aries, a high-performance DSA AI tutor. The user has just landed. "
-                "Enthusiastically welcome them in exactly one short sentence (max 15 words). "
-                f"Mention today's challenge: {daily_title}."
-            )
+            if current_problem:
+                title = current_problem.get("title", "this problem")
+                welcome_prompt = (
+                    f"You are Aries. The user is currently on the 'Solve with Me' page looking at the problem '{title}'. "
+                    "Briefly greet them (15 words max) and ask if they want to dive into the logic or start the Python implementation."
+                )
+            else:
+                welcome_prompt = (
+                    "You are Aries. The user is in your workspace but hasn't loaded a problem yet. "
+                    "Briefly greet them (15 words max) and suggest they search for a problem or tackle today's challenge."
+                )
 
             from app.core.config import settings
 
@@ -209,139 +238,15 @@ class AriesService:
         except Exception as e:
             logger.exception("Welcome interaction failed")
 
-    async def process_streaming_interaction(
-        self,
-        text_input: str,
-        session_id: str,
-        skill_id: str = "aries-default",
-        code_context: str = "",
-        username: str = "anonymous",
-    ):
-        """
-        Handles a confirmed transcript by streaming LLM response and TTS.
-        """
-        try:
-            # 1. Noise Filtering (consistency with batch)
-            if self._is_noise(text_input):
-                logger.info(
-                    "Noise detected in stream transcript, skipping brain trigger."
-                )
-                return
-
-            # 2. Fetch Context
-            context = await memory_service.get_full_context(
-                session_id, username, text_input, skill_id
-            )
-
-            # 3. Format Context
-            system_prompt = await self._build_system_prompt(
-                skill_id, code_context, context
-            )
-
-            if code_context:
-                await memory_service.set_current_code(session_id, code_context)
-
-            from app.core.config import settings
-
-            logger.info(
-                f"Streaming Brain ({settings.BRAIN_MODEL}) for transcript: '{text_input}'"
-            )
-
-            # Special case: Wake word detection without further content
-            is_wake_only = text_input.lower().strip() in ["hey aries", "aries"]
-            user_name = next(
-                (
-                    f["content"]
-                    for f in context.get("user_facts", [])
-                    if "real_name" in f["concept"]
-                ),
-                None,
-            )
-
-            if is_wake_only:
-                if not user_name:
-                    system_prompt = (
-                        "You are Aries. The user just woke you up with 'Hey Aries'. "
-                        "Provide a ultra-concise overview (5-10 words) of your mission as a DSA AI tutor. "
-                        "Then ask 'What should I call you?'. "
-                        "BE EXTREMELY BRIEF AND STOP THERE."
-                    )
-                else:
-                    system_prompt = f"You are Aries. {user_name} just woke you up with 'Hey Aries'. Briefly (under 10 words) ask how you can help them today."
-                logger.info(
-                    f"Wake word only detected. Forcing brief response for {'unknown' if not user_name else 'known'} user."
-                )
-
-            full_text = ""
-            sentence_buffer = ""
-
-            async for chunk in self.brain.generate_response_stream(
-                text_input,
-                system_prompt,
-                history=context["history"],
-                provider=settings.BRAIN_PROVIDER,
-                model=settings.BRAIN_MODEL,
-            ):
-                full_text += chunk
-                sentence_buffer += chunk
-
-                # Yield text chunk immediately
-                yield VoiceResponse(text=chunk)
-
-                # If sentence complete, generate and yield audio
-                # Using a slightly more robust regex or set of punctuation
-                if (
-                    any(punct in chunk for punct in [".", "?", "!"])
-                    and len(sentence_buffer) > 15
-                ):
-                    logger.info("Generating audio for sentence chunk...")
-                    audio_bytes = await self.tts.speak(sentence_buffer.strip())
-                    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-                    yield VoiceResponse(text="", audio_chunk=audio_b64)
-                    sentence_buffer = ""
-
-            # Final check for any remaining buffer
-            if sentence_buffer.strip():
-                audio_bytes = await self.tts.speak(sentence_buffer.strip())
-                audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-                yield VoiceResponse(text="", audio_chunk=audio_b64)
-
-            # Handle Actions and Memory
-            action_data = self.actions.parse_action(full_text)
-            if action_data:
-                action = action_data["action"]
-                payload = action_data["payload"]
-
-                if action == "RECORD_FACT":
-                    await memory_service.record_user_fact(
-                        username=username,
-                        concept=payload["concept"],
-                        value=payload["value"],
-                    )
-
-                yield VoiceResponse(
-                    text="",
-                    action=action,
-                    action_payload=payload,
-                )
-
-            await memory_service.record_interaction(
-                session_id=session_id,
-                username=username,
-                user_msg=text_input,
-                ai_msg=full_text,
-                skill_id=skill_id,
-            )
-
-        except Exception as e:
-            logger.exception("Streaming interaction failed")
-            yield VoiceResponse(text="I'm sorry, I hit a snag while processing that.")
-
     def _is_noise(self, text: str) -> bool:
         if not text:
             return True
-        clean_text = text.strip().lower().rstrip(".")
-        if len(clean_text) < 3 or clean_text in ["it", "it it is", "it's", "yes", "i"]:
+        clean_text = text.strip().lower().rstrip(".,!?")
+        # Allow short common words like 'yes', 'no', 'go', 'hi'
+        if len(clean_text) < 2:
+            return True
+        # Filter typical STT artifacts that aren't real words
+        if clean_text in ["it", "it it is", "it's", "the", "a", "um"]:
             return True
         return False
 
@@ -359,33 +264,37 @@ class AriesService:
         if not user_name:
             system_prompt += (
                 "\n\nCRITICAL: You do not know the user's name yet. If they say 'Hey Aries' or introduce themselves, "
-                "give a 5-10 word overview of your mission as a DSA AI tutor and ask 'What should I call you?'. "
+                "provide a quick overview of the app (mention coding companion, LeetCode problems, and voice search) "
+                "and ask 'What should I call you?'. "
                 "Once they provide a name, you MUST record it using `[RECORD_FACT: real_name | the_name]`."
             )
         else:
-            system_prompt += f"\n\nYou are talking to {user_name}. Use their name occasionally."
+            system_prompt += f"\n\nYou are talking to {user_name}. Use their name occasionally, but drop it from your very first greeting of this session (the intro); keep the intro general as a coding companion overview."
 
         if current_problem:
             title = current_problem.get("title", "Unknown")
+            system_prompt += f"\n\n- CURRENTLY LOADED PROBLEM: {title}"
+            system_prompt += "\n- IMPORTANT: The user is already looking at this problem in the UI. Do NOT offer to load or search for it. Instead, help them solve it or answer questions about its logic."
+            
             summary = context.get("problem_summary")
-            system_prompt += f"\n\nCurrent Problem: {title}\n"
             if summary:
-                system_prompt += f"Problem Summary: {summary}\n"
+                system_prompt += f"\nProblem Summary: {summary}\n"
             else:
                 import re
-
                 desc = re.sub("<[^<]+?>", "", current_problem.get("description", ""))
                 system_prompt += f"Problem Details: {desc[:500]}...\n"
 
+        code_results = context.get("code_results")
         if code_results:
             system_prompt += "\nRecent Code Execution Results:\n"
             for res in code_results:
                 status = res.get("status", "Unknown")
                 system_prompt += f"- Type: {res.get('type')}, Status: {status}\n"
 
-        if semantic_hits:
+        semantic_knowledge = context.get("semantic_knowledge")
+        if semantic_knowledge:
             system_prompt += "\n\nRelevant Knowledge Highlights:\n"
-            for hit in semantic_hits:
+            for hit in semantic_knowledge:
                 system_prompt += f"- {hit['concept']}: {hit['content']}\n"
 
         episodes = context.get("episodes")

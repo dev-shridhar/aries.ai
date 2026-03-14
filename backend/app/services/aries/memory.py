@@ -146,8 +146,17 @@ class MemoryService:
         # 3. Episodic Link (Optional - let agent know in chat history if needed)
         # We could add a system message to Redis here if we wanted immediate agent reaction
 
+    async def get_lightweight_context(self, session_id: str) -> dict:
+        """Fetch only the most critical hot context from Redis (no Mongo/MCP)."""
+        history = await aries_redis.get_context(session_id)
+        current_problem = await aries_redis.get_current_problem(session_id)
+        return {
+            "history": history,
+            "current_problem": current_problem,
+        }
+
     async def get_full_context(
-        self, session_id: str, username: str, query: str, skill_id: str
+        self, session_id: str, username: str, query: str = "", skill_id: str = "aries-default"
     ) -> dict:
         """Fetch unified context for LLM reasoning."""
         # 1. Hot Context (Redis)
@@ -202,18 +211,24 @@ class MemoryService:
         # 5. Daily Challenge (Inject for proactive mapping)
         daily_challenge = None
         try:
-            from app.api.mcp.router import mcp_service
-            async with mcp_service.get_session() as (session, _):
-                raw = await mcp_service.call_tool(session, "get_daily_challenge", {})
-                data = json.loads(raw)
-                problem = data.get("problem", data)
-                question = (problem.get("question") or problem) if isinstance(problem, dict) else {}
-                if isinstance(question, dict):
-                    daily_challenge = {
-                        "slug": question.get("titleSlug"),
-                        "title": question.get("title")
-                    }
-        except:
+            from app.api.mcp.router import daily_challenge_cache
+            if daily_challenge_cache:
+                daily_challenge = daily_challenge_cache.get("data")
+            else:
+                # If no cache, try to fetch once but don't block heavily
+                from app.api.mcp.router import mcp_service
+                async with mcp_service.get_session() as (session, _):
+                    raw = await mcp_service.call_tool(session, "get_daily_challenge", {})
+                    data = json.loads(raw)
+                    problem = data.get("problem", data)
+                    question = (problem.get("question") or problem) if isinstance(problem, dict) else {}
+                    if isinstance(question, dict):
+                        daily_challenge = {
+                            "slug": question.get("titleSlug"),
+                            "title": question.get("title")
+                        }
+        except Exception as e:
+            logger.debug(f"Daily challenge fetch failed: {e}")
             pass
 
         return {

@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # Brain Settings
     BRAIN_PROVIDER: str = "groq"
-    BRAIN_MODEL: str = "llama-3.1-8b-instant"
+    BRAIN_MODEL: str = "llama-3.3-70b-versatile"
     EMBEDDING_MODEL: str = "nomic-embed-text:latest"
 
     model_config = {"env_file": ".env", "case_sensitive": True, "extra": "ignore"}

@@ -52,97 +52,42 @@
     }
 }
 
-/* Listening State: Gentle Cyan Glow */
+/* Listening State: Head Turn (Show Ear) + Cyan Glow */
 .listening .aries-mascot-img {
-    filter: drop-shadow(0 0 25px rgba(34, 211, 238, 0.7));
-    transform: scale(1.1);
+    filter: drop-shadow(0 0 35px rgba(34, 211, 238, 0.9));
+    transform: scale(1.4) rotate(-8deg); /* Turn head slightly */
 }
 
-/* Thinking State: Pulse Purple */
+/* Thinking State: Deep Pulse + Purple Glow */
 .thinking .aries-mascot-img {
-    animation: aries-think-pulse 1.5s infinite ease-in-out;
+    animation: aries-think-deep 1.2s infinite ease-in-out;
 }
 
-@keyframes aries-think-pulse {
-
-    0%,
-    100% {
-        filter: drop-shadow(0 0 20px rgba(168, 85, 247, 0.5));
-        transform: scale(1.1);
+@keyframes aries-think-deep {
+    0%, 100% {
+        filter: drop-shadow(0 0 25px rgba(168, 85, 247, 0.6));
+        transform: scale(1.3);
     }
-
     50% {
-        filter: drop-shadow(0 0 40px rgba(168, 85, 247, 0.9));
-        transform: scale(1.18);
+        filter: drop-shadow(0 0 50px rgba(168, 85, 247, 1));
+        transform: scale(1.45);
     }
 }
 
-/* Speaking State: Vibrant Active Glow + Talking Animation */
+/* Speaking State: Mouth Move (Pulse) + Crimson Glow */
 .speaking .aries-mascot-img {
-    filter: drop-shadow(0 0 30px rgba(244, 63, 94, 0.8));
-    animation: aries-talk 0.25s infinite ease-in-out;
+    animation: aries-speak-mouth 0.2s infinite alternate ease-in-out;
 }
 
-@keyframes aries-talk {
-
-    0%,
-    100% {
-        transform: scale(1.18) translateY(0);
+@keyframes aries-speak-mouth {
+    from {
+        filter: drop-shadow(0 0 30px rgba(244, 63, 94, 0.8));
+        transform: scale(1.4, 1.4);
     }
-
-    50% {
-        transform: scale(1.18, 1.1) translateY(3px);
+    to {
+        filter: drop-shadow(0 0 45px rgba(244, 63, 94, 1));
+        transform: scale(1.4, 1.25); /* Squish vertically to simulate mouth movement */
     }
-}
-
-.aries-mascot-bubble {
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%) translateY(0);
-    padding: 0.5rem 1rem;
-    color: #a855f7;
-    /* Default Brand Purple */
-    font-size: 0.95rem;
-    font-weight: 600;
-    font-style: italic;
-    letter-spacing: 0.08em;
-    white-space: pre-line;
-    line-height: 1.2;
-    width: max-content;
-    max-width: 240px;
-    animation: bubble-reveal 0.3s ease-out, aries-mystical-flicker 4s infinite ease-in-out;
-    z-index: 100;
-    pointer-events: none;
-    text-align: center;
-    transition: all 0.3s ease;
-    text-shadow: 0 0 12px rgba(168, 85, 247, 0.9);
-    /* Signature Purple Glow */
-}
-
-@keyframes aries-mystical-flicker {
-
-    0%,
-    100% {
-        text-shadow: 0 0 12px rgba(168, 85, 247, 0.9);
-        opacity: 0.9;
-    }
-
-    33% {
-        text-shadow: 0 0 25px rgba(244, 63, 94, 0.6), 0 0 10px rgba(168, 85, 247, 1);
-        opacity: 1;
-    }
-
-    66% {
-        text-shadow: 0 0 15px rgba(168, 85, 247, 0.7);
-        opacity: 0.8;
-    }
-}
-
-/* Vanish bubble on mascot hover */
-.aries-visualizer-container:hover .aries-mascot-bubble {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-10px);
 }
 
 /* The "Summoning Flash" effect on active */
@@ -160,116 +105,12 @@
         transform: scale(0.8);
         filter: brightness(2) contrast(1.5) drop-shadow(0 0 50px #fff);
     }
-
     50% {
-        transform: scale(1.3);
+        transform: scale(1.6);
         filter: brightness(1.5) drop-shadow(0 0 30px rgba(168, 85, 247, 1));
     }
-
     100% {
-        transform: scale(1.1);
-        filter: brightness(1) drop-shadow(0 0 25px rgba(34, 211, 238, 0.7));
-    }
-}
-
-/* Animating Dots for active states */
-.listening .aries-mascot-bubble::after,
-.thinking .aries-mascot-bubble::after,
-.speaking .aries-mascot-bubble::after {
-    content: '';
-    display: inline-block;
-    width: 1.5em;
-    text-align: left;
-    animation: dot-flashing 1.5s infinite steps(4);
-}
-
-@keyframes dot-flashing {
-    0% {
-        content: '';
-    }
-
-    25% {
-        content: '.';
-    }
-
-    50% {
-        content: '..';
-    }
-
-    75% {
-        content: '...';
-    }
-}
-
-/* Phase Text Glows */
-.listening .aries-mascot-bubble {
-    font-family: 'JetBrains Mono', monospace !important;
-    color: #22d3ee;
-    text-shadow: 0 0 12px rgba(34, 211, 238, 0.9);
-    letter-spacing: 0.05em;
-}
-
-.thinking .aries-mascot-bubble {
-    font-family: 'JetBrains Mono', monospace !important;
-    color: #a855f7;
-    text-shadow: 0 0 12px rgba(168, 85, 247, 0.9);
-    letter-spacing: 0.05em;
-}
-
-.speaking .aries-mascot-bubble {
-    font-family: 'JetBrains Mono', monospace !important;
-    color: #f43f5e;
-    text-shadow: 0 0 12px rgba(244, 63, 94, 0.9);
-    letter-spacing: 0.05em;
-}
-
-@keyframes bubble-reveal {
-    from {
-        opacity: 0;
-        transform: translateX(-50%) translateY(10px) scale(0.95);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateX(-50%) translateY(0) scale(1);
-    }
-}
-
-@keyframes aries-pulse {
-    0% {
-        transform: scale(1);
-        opacity: 0.6;
-    }
-
-    50% {
-        transform: scale(1.2);
-        opacity: 0.2;
-    }
-
-    100% {
-        transform: scale(1);
-        opacity: 0.6;
-    }
-}
-
-@keyframes aries-spin {
-    from {
-        transform: rotate(0deg);
-    }
-
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-@keyframes aries-wave {
-    0% {
-        transform: scale(0.9);
-        opacity: 0.8;
-    }
-
-    100% {
-        transform: scale(1.5);
-        opacity: 0;
+        transform: scale(1.4);
+        filter: brightness(1);
     }
 }

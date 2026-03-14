@@ -5,7 +5,7 @@ from app.core.config import settings
 class TTSAdapter:
     def __init__(self):
         self.api_key = settings.DEEPGRAM_API_KEY
-        self.base_url = "https://api.deepgram.com/v1/speak?model=aura-asteria-en"
+        self.base_url = "https://api.deepgram.com/v1/speak?model=aura-asteria-en&encoding=linear16&container=wav"
 
     async def speak(self, text: str) -> bytes:
         """

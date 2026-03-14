@@ -1,6 +1,8 @@
 import json
 import logging
 import re
+import datetime
+import asyncio
 from fastapi import APIRouter, HTTPException
 
 from app.services.mcp.service import MCPService
@@ -23,8 +25,18 @@ def extract_expected_outputs(html_content: str) -> list[str]:
     return outputs
 
 
+daily_challenge_cache: dict = {}
+
+
 @router.get("/daily")
 async def get_daily():
+    global daily_challenge_cache
+    
+    # Cache for 1 hour
+    now = datetime.datetime.now()
+    if daily_challenge_cache and (now - daily_challenge_cache.get("timestamp", datetime.datetime.min)).total_seconds() < 3600:
+        return daily_challenge_cache["data"]
+
     try:
         async with mcp_service.get_session() as (session, _):
             raw = await mcp_service.call_tool(session, "get_daily_challenge", {})
@@ -42,7 +54,10 @@ async def get_daily():
         else:
             slug = (problem.get("link") or "").strip("/").split("/")[-1]
             title = ""
-        return {"slug": slug, "title": title, "date": data.get("date", "")}
+            
+        result = {"slug": slug, "title": title, "date": data.get("date", "")}
+        daily_challenge_cache = {"data": result, "timestamp": now}
+        return result
     except Exception as e:
         logger.exception("get_daily failed")
         raise HTTPException(status_code=500, detail=str(e))
@@ -141,6 +156,8 @@ async def get_problem(
         if not problem or not problem.get("title"):
             raise HTTPException(status_code=404, detail="Problem not found")
 
+        html_content = problem.get("content", "")
+
         # Unified Memory: Log Load Event & Sync Hot Context
         if session_id:
             await memory_service.record_event(
@@ -186,7 +203,6 @@ async def get_problem(
             )
         problem["pythonStub"] = python_code
 
-        html_content = problem.get("content", "")
         if html_content:
             problem["expectedOutputs"] = extract_expected_outputs(html_content)
             problem["orderIndependent"] = "in any order" in html_content.lower()
