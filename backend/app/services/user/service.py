@@ -1,5 +1,6 @@
 import logging
 from typing import Optional
+
 from app.core.user.models import UserProfile
 from app.infrastructure.aries.mongo_client import aries_mongo
 
@@ -7,6 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class UserService:
+    """Manages User Profiles and persistence in MongoDB."""
     async def get_profile(self, username: str) -> Optional[UserProfile]:
         """Fetch user profile from MongoDB."""
         data = await aries_mongo.get_user_profile(username)

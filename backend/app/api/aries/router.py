@@ -1,9 +1,11 @@
-import logging
-import json
 import asyncio
+import json
+import logging
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from app.services.aries.service import aries_service
+
 from app.core.aries.models import VoiceRequest, VoiceResponse
+from app.services.aries.service import aries_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -27,11 +29,11 @@ async def aries_websocket(websocket: WebSocket):
         while True:
             # Handle both text (config/legacy) and binary (audio)
             message = await websocket.receive()
-            
+
             if message["type"] == "websocket.disconnect":
                 logger.info("Aries WebSocket disconnected gracefully")
                 break
-                
+
             if "text" in message:
                 data = json.loads(message["text"])
                 logger.debug(f"Received JSON message keys: {list(data.keys())}")
@@ -42,27 +44,36 @@ async def aries_websocket(websocket: WebSocket):
                     state["username"] = data["username"]
                 if "code_context" in data:
                     state["code_context"] = data["code_context"]
-                
+
                 if data.get("event") == "WELCOME":
-                    logger.info("ROUTER: Received WELCOME event from UI. Triggering welcome interaction...")
+                    logger.info(
+                        "ROUTER: Received WELCOME event from UI. Triggering welcome interaction..."
+                    )
                     async for response in aries_service.process_welcome_interaction(
-                        session_id=state["session_id"],
-                        username=state["username"]
+                        session_id=state["session_id"], username=state["username"]
                     ):
                         await websocket.send_json(response.dict())
 
                 # TRIGGER: Process the buffered audio
                 if data.get("event") == "PROCESS_AUDIO":
-                    logger.info(f"ROUTER: Received PROCESS_AUDIO event. Waiting 200ms for trailing chunks...")
-                    await asyncio.sleep(0.2) # Grace period for trailing binary messages
-                    
-                    logger.info(f"ROUTER: Final buffer size: {len(state['audio_buffer'])} bytes.")
-                    
+                    logger.info(
+                        f"ROUTER: Received PROCESS_AUDIO event. Waiting 200ms for trailing chunks..."
+                    )
+                    await asyncio.sleep(
+                        0.2
+                    )  # Grace period for trailing binary messages
+
+                    logger.info(
+                        f"ROUTER: Final buffer size: {len(state['audio_buffer'])} bytes."
+                    )
+
                     if not state["audio_buffer"]:
-                         await websocket.send_json(VoiceResponse(text="").dict())
+                        await websocket.send_json(VoiceResponse(text="").dict())
                     else:
                         try:
-                            async for response in aries_service.process_voice_interaction(
+                            async for (
+                                response
+                            ) in aries_service.process_voice_interaction(
                                 audio_bytes=state["audio_buffer"],
                                 session_id=state["session_id"],
                                 username=state["username"],
@@ -70,15 +81,19 @@ async def aries_websocket(websocket: WebSocket):
                                 code_context=state["code_context"],
                             ):
                                 await websocket.send_json(response.dict())
-                            state["audio_buffer"] = b"" # Clear for next turn
+                            state["audio_buffer"] = b""  # Clear for next turn
                         except Exception as e:
                             logger.error(f"ROUTER: Service processing failed: {e}")
-                            await websocket.send_json(VoiceResponse(text="Error processing audio.").dict())
+                            await websocket.send_json(
+                                VoiceResponse(text="Error processing audio.").dict()
+                            )
 
             elif "bytes" in message:
                 # Accumulate audio bytes
                 state["audio_buffer"] += message["bytes"]
-                logger.debug(f"ROUTER: Buffered {len(message['bytes'])} bytes. Total: {len(state['audio_buffer'])}")
+                logger.debug(
+                    f"ROUTER: Buffered {len(message['bytes'])} bytes. Total: {len(state['audio_buffer'])}"
+                )
 
     except WebSocketDisconnect:
         logger.info("Aries WebSocket disconnected")

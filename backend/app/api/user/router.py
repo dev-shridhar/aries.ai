@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, Query
+
 from app.core.user.models import UserProfile
-from app.services.user.service import user_service
 from app.services.aries.memory import memory_service
+from app.services.user.service import user_service
 
 router = APIRouter()
 

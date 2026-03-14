@@ -1,9 +1,9 @@
 import json
 import logging
 import os
-from groq import Groq
 
 from dotenv import load_dotenv
+from groq import Groq
 
 logger = logging.getLogger(__name__)
 

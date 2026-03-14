@@ -1,6 +1,7 @@
 import json
 import re
 from typing import Any
+
 from app.infrastructure.compiler.executor import compiler_infra
 
 
@@ -9,6 +10,7 @@ class CompilerService:
 
     @staticmethod
     async def run_python(code: str, stdin: str = "") -> dict[str, Any]:
+        """Safely executes raw Python code in a sandboxed environment."""
         return await compiler_infra.run_raw_python(code, stdin)
 
     @staticmethod

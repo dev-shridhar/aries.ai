@@ -1,5 +1,7 @@
 import logging
-from deepgram import DeepgramClient, PrerecordedOptions, FileSource
+
+from deepgram import DeepgramClient, FileSource, PrerecordedOptions
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -18,7 +20,7 @@ class STTAdapter:
 
         try:
             logger.info(f"STT: Transcribing {len(audio_bytes)} bytes...")
-            
+
             payload = {"buffer": audio_bytes}
             options = PrerecordedOptions(
                 model="nova-2",
@@ -29,7 +31,7 @@ class STTAdapter:
             response = await self.client.listen.asyncrest.v("1").transcribe_file(
                 payload, options
             )
-            
+
             transcript = (
                 response.results.channels[0].alternatives[0].transcript
                 if response.results.channels
@@ -40,5 +42,6 @@ class STTAdapter:
         except Exception as e:
             logger.error(f"STT: Deepgram transcription failed: {e}")
             return ""
+
 
 stt_adapter = STTAdapter(settings.DEEPGRAM_API_KEY)

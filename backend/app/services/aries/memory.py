@@ -1,10 +1,11 @@
-import logging
+import asyncio
 import datetime
 import json
-import asyncio
-from typing import List, Optional, Any
-from app.infrastructure.aries.redis_client import aries_redis
+import logging
+from typing import Any, List, Optional
+
 from app.infrastructure.aries.mongo_client import aries_mongo
+from app.infrastructure.aries.redis_client import aries_redis
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +15,8 @@ class MemoryService:
 
     async def record_user_fact(self, username: str, concept: str, value: str):
         """Persists a fact about the user in the 'Memory Palace'."""
-        from app.services.aries.pipeline.brain import brain_adapter
         from app.core.config import settings
+        from app.services.aries.pipeline.brain import brain_adapter
 
         # Generate embedding for the fact
         vector = await brain_adapter.get_embedding(
@@ -24,10 +25,7 @@ class MemoryService:
 
         fact_key = f"user_fact:{username}:{concept}"
         await aries_mongo.save_semantic_fact(
-            concept=fact_key,
-            content=value,
-            skill_id="user-personality",
-            vector=vector
+            concept=fact_key, content=value, skill_id="user-personality", vector=vector
         )
         logger.info(f"Recorded embedded fact for {username}: {concept} = {value}")
 
@@ -35,8 +33,8 @@ class MemoryService:
         self, slug: str, title: str, description: str
     ):
         """Asynchronously summarizes a problem and stores it in semantic memory."""
-        from app.services.aries.pipeline.brain import brain_adapter
         from app.core.config import settings
+        from app.services.aries.pipeline.brain import brain_adapter
 
         system_prompt = "You are a DSA expert. Summarize the following coding problem into 2-3 concise sentences. Focus on the core objective and constraints."
         user_msg = f"Problem: {title}\n\n{description}"
@@ -112,10 +110,12 @@ class MemoryService:
         )
 
     async def set_current_code(self, session_id: str, code: str):
+        """Pairs the latest code from the UI with the session in Redis."""
         """Sync code sensory memory."""
         await aries_redis.set_current_code(session_id, code)
 
     async def set_current_problem(self, session_id: str, problem_data: dict):
+        """Stores the currently loaded problem metadata in Redis sensory memory."""
         """Sync problem context sensory memory."""
         await aries_redis.set_current_problem(session_id, problem_data)
 
@@ -156,7 +156,11 @@ class MemoryService:
         }
 
     async def get_full_context(
-        self, session_id: str, username: str, query: str = "", skill_id: str = "aries-default"
+        self,
+        session_id: str,
+        username: str,
+        query: str = "",
+        skill_id: str = "aries-default",
     ) -> dict:
         """Fetch unified context for LLM reasoning."""
         # 1. Hot Context (Redis)
@@ -177,13 +181,16 @@ class MemoryService:
         direct_facts = await aries_mongo.query_semantic_memory(
             f"user_fact:{username}:", skill_id="user-personality", limit=10
         )
-        
+
         # Hybrid Semantic Check for facts
         semantic_facts = []
         if query and len(query) > 5:
-            from app.services.aries.pipeline.brain import brain_adapter
             from app.core.config import settings
-            query_vector = await brain_adapter.get_embedding(query, model=settings.EMBEDDING_MODEL)
+            from app.services.aries.pipeline.brain import brain_adapter
+
+            query_vector = await brain_adapter.get_embedding(
+                query, model=settings.EMBEDDING_MODEL
+            )
             semantic_facts = await aries_mongo.semantic_search(
                 vector=query_vector, skill_id="user-personality", limit=3
             )
@@ -192,7 +199,7 @@ class MemoryService:
         all_facts = {f["concept"]: f for f in direct_facts}
         for f in semantic_facts:
             all_facts[f["concept"]] = f
-        
+
         user_facts = list(all_facts.values())
 
         # 5. Semantic (Mongo) - Relevant Knowledge
@@ -212,20 +219,28 @@ class MemoryService:
         daily_challenge = None
         try:
             from app.api.mcp.router import daily_challenge_cache
+
             if daily_challenge_cache:
                 daily_challenge = daily_challenge_cache.get("data")
             else:
                 # If no cache, try to fetch once but don't block heavily
                 from app.api.mcp.router import mcp_service
+
                 async with mcp_service.get_session() as (session, _):
-                    raw = await mcp_service.call_tool(session, "get_daily_challenge", {})
+                    raw = await mcp_service.call_tool(
+                        session, "get_daily_challenge", {}
+                    )
                     data = json.loads(raw)
                     problem = data.get("problem", data)
-                    question = (problem.get("question") or problem) if isinstance(problem, dict) else {}
+                    question = (
+                        (problem.get("question") or problem)
+                        if isinstance(problem, dict)
+                        else {}
+                    )
                     if isinstance(question, dict):
                         daily_challenge = {
                             "slug": question.get("titleSlug"),
-                            "title": question.get("title")
+                            "title": question.get("title"),
                         }
         except Exception as e:
             logger.debug(f"Daily challenge fetch failed: {e}")

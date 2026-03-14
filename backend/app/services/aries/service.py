@@ -1,30 +1,37 @@
-import logging
+import asyncio
 import base64
 import json
-import asyncio
-import time
+import logging
 import re
+import time
+
+from app.core.aries.models import VoiceResponse
+from app.services.aries.actions.triggers import action_trigger
 from app.services.aries.memory import memory_service
+from app.services.aries.pipeline.brain import brain_adapter
 from app.services.aries.pipeline.stt import stt_adapter
 from app.services.aries.pipeline.tts import tts_adapter
-from app.services.aries.pipeline.brain import brain_adapter
 from app.services.aries.skills.manager import skill_manager
-from app.services.aries.actions.triggers import action_trigger
-from app.core.aries.models import VoiceResponse
 
 logger = logging.getLogger(__name__)
 
 
 class AriesService:
+    """
+    Core orchestrator for the Aries voice agent.
+    Handles the end-to-end pipeline: STT -> Brain (LLM) -> Memory -> TTS.
+    """
+
     def __init__(self):
         self.skill_manager = skill_manager
         self.brain = brain_adapter
         self.tts = tts_adapter
         self.actions = action_trigger
-        # STT is handled directly via stt_adapter import/inject if needed, 
-        # but common practice here seems to be using the adapter directly 
+        # STT is handled directly via stt_adapter import/inject if needed,
+        # but common practice here seems to be using the adapter directly
         # or keeping it as an instance var.
         from app.services.aries.pipeline.stt import stt_adapter
+
         self.stt = stt_adapter
 
     async def process_voice_interaction(
@@ -41,9 +48,12 @@ class AriesService:
         """
         try:
             import time
+
             start_total = time.time()
-            logger.info(f"SERVICE: process_voice_interaction entry. Session: {session_id}, Bytes: {len(audio_bytes)}")
-            
+            logger.info(
+                f"SERVICE: process_voice_interaction entry. Session: {session_id}, Bytes: {len(audio_bytes)}"
+            )
+
             # 1. Transcribe (Batch STT)
             if not audio_bytes:
                 logger.warning("SERVICE: No audio bytes received.")
@@ -55,24 +65,28 @@ class AriesService:
                 text_input = await self.stt.transcribe(audio_bytes)
             except Exception as stt_err:
                 logger.error(f"SERVICE: STT Transcription failed: {stt_err}")
-                yield VoiceResponse(text="I had trouble hearing you. Could you repeat that?")
+                yield VoiceResponse(
+                    text="I had trouble hearing you. Could you repeat that?"
+                )
                 return
-            
+
             stt_end = time.time()
-            logger.info(f"STT Took: {stt_end - stt_start:.2f}s. Transcript: '{text_input}'")
+            logger.info(
+                f"STT Took: {stt_end - stt_start:.2f}s. Transcript: '{text_input}'"
+            )
 
             # --- STREAM POINT 0: Show the user what we heard immediately ---
             yield VoiceResponse(
                 text=text_input,
-                is_final=True, # Mark as STT result for frontend
-                speech_final=False # Keep it until brain response clears it
+                is_final=True,  # Mark as STT result for frontend
+                speech_final=False,  # Keep it until brain response clears it
             )
 
             # 1.5 Noise/Silence Check
             if self._is_noise(text_input):
-                 logger.info("Noise or silence detected, skipping brain.")
-                 yield VoiceResponse(text="")
-                 return
+                logger.info("Noise or silence detected, skipping brain.")
+                yield VoiceResponse(text="")
+                return
 
             # 2. Fetch Unified Context
             context = await memory_service.get_full_context(
@@ -90,7 +104,10 @@ class AriesService:
 
             # 4. Query Brain
             from app.core.config import settings
-            logger.info(f"Querying Brain ({settings.BRAIN_MODEL}) with transcript: '{text_input}'")
+
+            logger.info(
+                f"Querying Brain ({settings.BRAIN_MODEL}) with transcript: '{text_input}'"
+            )
             brain_start = time.time()
             try:
                 ai_text = await self.brain.generate_response(
@@ -105,11 +122,13 @@ class AriesService:
                 ai_text = "I'm having trouble thinking right now. Let's try again."
 
             brain_end = time.time()
-            logger.info(f"Brain Took: {brain_end - brain_start:.2f}s. Response: '{ai_text}'")
+            logger.info(
+                f"Brain Took: {brain_end - brain_start:.2f}s. Response: '{ai_text}'"
+            )
 
             # --- STREAM POINT 1: Yield text immediately to clear Thinking state ---
             action_data = self.actions.parse_action(ai_text)
-            
+
             yield VoiceResponse(
                 text=ai_text,
                 action=action_data["action"] if action_data else None,
@@ -123,13 +142,17 @@ class AriesService:
                 audio_bytes_out = await self.tts.speak(ai_text)
             except Exception as tts_err:
                 logger.error(f"SERVICE: TTS generation failed: {tts_err}")
-                audio_bytes_out = b"" # Fallback to text only
-            
+                audio_bytes_out = b""  # Fallback to text only
+
             tts_end = time.time()
             logger.info(f"TTS Took: {tts_end - tts_start:.2f}s")
-            
-            audio_b64_out = base64.b64encode(audio_bytes_out).decode("utf-8") if audio_bytes_out else None
-            
+
+            audio_b64_out = (
+                base64.b64encode(audio_bytes_out).decode("utf-8")
+                if audio_bytes_out
+                else None
+            )
+
             total_time = time.time() - start_total
             logger.info(f"TOTAL PIPELINE TIME: {total_time:.2f}s")
 
@@ -156,12 +179,14 @@ class AriesService:
 
             # --- STREAM POINT 2: Yield Final Response with Audio ---
             yield VoiceResponse(
-                text="", # Text already sent
+                text="",  # Text already sent
                 audio_chunk=audio_b64_out,
             )
         except Exception as e:
             logger.exception("SERVICE: Fatal error in process_voice_interaction")
-            yield VoiceResponse(text="I'm sorry, my systems are currently unresponsive.")
+            yield VoiceResponse(
+                text="I'm sorry, my systems are currently unresponsive."
+            )
 
     async def process_welcome_interaction(
         self,
@@ -170,10 +195,15 @@ class AriesService:
         skill_id: str = "aries-default",
     ):
         """
+        Generates a contextual welcome message based on the current problem state.
+        Bypasses full context for lower latency.
+        """
+        """
         Generates a contextual welcome message based on current problem state.
         """
         try:
             from app.services.aries.memory import memory_service
+
             context = await memory_service.get_lightweight_context(session_id)
             current_problem = context.get("current_problem")
 
@@ -255,9 +285,16 @@ class AriesService:
     ) -> str:
         current_code = code_context or context.get("current_code") or ""
         current_problem = context.get("current_problem")
-        
+
         # Check for user name in context
-        user_name = next((f["content"] for f in context.get("user_facts", []) if "real_name" in f["concept"]), None)
+        user_name = next(
+            (
+                f["content"]
+                for f in context.get("user_facts", [])
+                if "real_name" in f["concept"]
+            ),
+            None,
+        )
 
         system_prompt = self.skill_manager.get_system_prompt(skill_id, current_code)
 
@@ -275,12 +312,13 @@ class AriesService:
             title = current_problem.get("title", "Unknown")
             system_prompt += f"\n\n- CURRENTLY LOADED PROBLEM: {title}"
             system_prompt += "\n- IMPORTANT: The user is already looking at this problem in the UI. Do NOT offer to load or search for it. Instead, help them solve it or answer questions about its logic."
-            
+
             summary = context.get("problem_summary")
             if summary:
                 system_prompt += f"\nProblem Summary: {summary}\n"
             else:
                 import re
+
                 desc = re.sub("<[^<]+?>", "", current_problem.get("description", ""))
                 system_prompt += f"Problem Details: {desc[:500]}...\n"
 

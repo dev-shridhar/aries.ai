@@ -1,12 +1,13 @@
+import asyncio
+import datetime
 import json
 import logging
 import re
-import datetime
-import asyncio
+
 from fastapi import APIRouter, HTTPException
 
-from app.services.mcp.service import MCPService
 from app.services.aries.memory import memory_service
+from app.services.mcp.service import MCPService
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +32,16 @@ daily_challenge_cache: dict = {}
 @router.get("/daily")
 async def get_daily():
     global daily_challenge_cache
-    
+
     # Cache for 1 hour
     now = datetime.datetime.now()
-    if daily_challenge_cache and (now - daily_challenge_cache.get("timestamp", datetime.datetime.min)).total_seconds() < 3600:
+    if (
+        daily_challenge_cache
+        and (
+            now - daily_challenge_cache.get("timestamp", datetime.datetime.min)
+        ).total_seconds()
+        < 3600
+    ):
         return daily_challenge_cache["data"]
 
     try:
@@ -54,7 +61,7 @@ async def get_daily():
         else:
             slug = (problem.get("link") or "").strip("/").split("/")[-1]
             title = ""
-            
+
         result = {"slug": slug, "title": title, "date": data.get("date", "")}
         daily_challenge_cache = {"data": result, "timestamp": now}
         return result

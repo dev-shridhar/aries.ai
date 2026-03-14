@@ -1,8 +1,10 @@
-import logging
-from typing import Optional, List, Any
-from motor.motor_asyncio import AsyncIOMotorClient
-from bson import ObjectId
 import datetime
+import logging
+from typing import Any, List, Optional
+
+from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorClient
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -148,13 +150,15 @@ class AriesMongoClient:
         # if skill_id:
         #     pipeline.insert(1, {"$match": {"skill_id": skill_id}})
         # cursor = self.db.semantic_knowledge.aggregate(pipeline)
-        
+
         # Local Fallback: return most recent similar skills
         filter_q = {}
         if skill_id:
             filter_q["skill_id"] = skill_id
-        
-        cursor = self.db.semantic_knowledge.find(filter_q).sort("timestamp", -1).limit(limit)
+
+        cursor = (
+            self.db.semantic_knowledge.find(filter_q).sort("timestamp", -1).limit(limit)
+        )
         return await cursor.to_list(length=limit)
 
     # --- Code Sessions & Execution Results ---

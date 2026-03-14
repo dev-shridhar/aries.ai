@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 
 class ActionTrigger:
@@ -33,7 +33,10 @@ class ActionTrigger:
                 parts = payload_str.split("|", 1)
                 concept = parts[0].strip() if len(parts) > 0 else "unknown"
                 value = parts[1].strip() if len(parts) > 1 else ""
-                return {"action": "RECORD_FACT", "payload": {"concept": concept, "value": value}}
+                return {
+                    "action": "RECORD_FACT",
+                    "payload": {"concept": concept, "value": value},
+                }
 
         return None
 

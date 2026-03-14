@@ -1,7 +1,9 @@
 import logging
+from typing import Dict, List, Optional
+
 import httpx
 from groq import AsyncGroq
-from typing import Optional, List, Dict
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -126,7 +128,9 @@ class BrainAdapter:
                 messages.extend(history)
             messages.append({"role": "user", "content": text})
 
-            logger.info(f"GROQ: Requesting completion for model {model} (timeout=15s)...")
+            logger.info(
+                f"GROQ: Requesting completion for model {model} (timeout=15s)..."
+            )
             # Log first message content (system prompt) for health check but truncated
             logger.debug(f"GROQ: System Prompt (truncated): {system_prompt[:200]}...")
 
@@ -156,15 +160,17 @@ class BrainAdapter:
                 resp = await client.post(
                     "http://localhost:11434/api/embeddings",
                     json={"model": model, "prompt": text},
-                    timeout=1.0, # Shorter timeout for faster fallback
+                    timeout=1.0,  # Shorter timeout for faster fallback
                 )
                 resp.raise_for_status()
                 data = resp.json()
                 return data["embedding"]
         except Exception as e:
-            logger.warning(f"Ollama Embedding Offline (using zero-vector fallback): {e}")
+            logger.warning(
+                f"Ollama Embedding Offline (using zero-vector fallback): {e}"
+            )
             # Return a standard Nomic-sized zero vector to keep the DB logic happy
-            return [0.0] * 768 
+            return [0.0] * 768
 
     async def _ollama_inference(
         self,
