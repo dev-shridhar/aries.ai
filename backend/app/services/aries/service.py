@@ -1,11 +1,10 @@
-import asyncio
 import base64
-import json
 import logging
-import re
 import time
+from collections.abc import AsyncGenerator
 
 from app.core.aries.models import VoiceResponse
+from app.infrastructure.aries.redis_client import aries_redis
 from app.services.aries.actions.triggers import action_trigger
 from app.services.aries.memory import memory_service
 from app.services.aries.pipeline.brain import brain_adapter
@@ -17,22 +16,21 @@ logger = logging.getLogger(__name__)
 
 
 class AriesService:
-    """
-    Core orchestrator for the Aries voice agent.
-    Handles the end-to-end pipeline: STT -> Brain (LLM) -> Memory -> TTS.
+    """Core orchestrator for the Aries autonomous voice agent.
+
+    AriesService manages the high-level coordination between perception (STT),
+    cognition (LangGraph/Brain), and motor output (TTS). It adheres to a
+    Vertical Slice architecture, focusing on providing a seamless, low-latency
+    voice experience for coding assistance.
     """
 
     def __init__(self):
+        """Initializes the AriesService with its dependent adapters."""
         self.skill_manager = skill_manager
         self.brain = brain_adapter
+        self.stt = stt_adapter
         self.tts = tts_adapter
         self.actions = action_trigger
-        # STT is handled directly via stt_adapter import/inject if needed,
-        # but common practice here seems to be using the adapter directly
-        # or keeping it as an instance var.
-        from app.services.aries.pipeline.stt import stt_adapter
-
-        self.stt = stt_adapter
 
     async def process_voice_interaction(
         self,
@@ -41,134 +39,125 @@ class AriesService:
         skill_id: str = "aries-default",
         code_context: str = "",
         username: str = "anonymous",
-    ):
-        """
-        Full discrete voice loop: Audio -> STT -> Brain -> Memory -> TTS -> Audio.
-        Refactored to yield multiple times for streaming feel.
+    ) -> AsyncGenerator[VoiceResponse, None]:
+        """Handles a complete discrete voice interaction loop.
+
+        This method executes the 'Audio -> STT -> Brain -> TTS -> Audio' pipeline.
+        It uses a streaming approach to yield intermediate results (transcripts)
+        to the user as quickly as possible, reducing perceived latency.
+
+        Args:
+            audio_bytes (bytes): The raw audio input from the user.
+            session_id (str): The unique identifier for the user's active session.
+            skill_id (str): The specific Aries skill/persona to use.
+            code_context (str): The current code in the user's editor.
+            username (str): The name of the user for personalized responses.
+
+        Yields:
+            VoiceResponse: Incremental updates containing transcript, text,
+                actions, or audio chunks.
         """
         try:
-            import time
-
             start_total = time.time()
-            logger.info(
-                f"SERVICE: process_voice_interaction entry. Session: {session_id}, Bytes: {len(audio_bytes)}"
-            )
+            logger.info(f"SERVICE: Starting voice interaction for session {session_id}")
 
-            # 1. Transcribe (Batch STT)
+            # 1. PERCEPTION: Speech-to-Text
             if not audio_bytes:
-                logger.warning("SERVICE: No audio bytes received.")
+                logger.warning("SERVICE: Received empty audio buffer.")
                 yield VoiceResponse(text="I'm listening, but I didn't hear anything.")
                 return
 
             stt_start = time.time()
-            try:
-                text_input = await self.stt.transcribe(audio_bytes)
-            except Exception as stt_err:
-                logger.error(f"SERVICE: STT Transcription failed: {stt_err}")
-                yield VoiceResponse(
-                    text="I had trouble hearing you. Could you repeat that?"
-                )
-                return
+            text_input = await self.stt.transcribe(audio_bytes)
+            stt_duration = time.time() - stt_start
 
-            stt_end = time.time()
             logger.info(
-                f"STT Took: {stt_end - stt_start:.2f}s. Transcript: '{text_input}'"
+                f"STT: Finished in {stt_duration:.2f}s. Transcript: '{text_input}'"
             )
 
-            # --- STREAM POINT 0: Show the user what we heard immediately ---
-            yield VoiceResponse(
-                text=text_input,
-                is_final=True,  # Mark as STT result for frontend
-                speech_final=False,  # Keep it until brain response clears it
-            )
+            # Immediately yield the transcript to show the user we heard them.
+            yield VoiceResponse(text=text_input, is_final=True, speech_final=False)
 
-            # 1.5 Noise/Silence Check
+            # 1.1 NOISE FILTERING
             if self._is_noise(text_input):
-                logger.info("Noise or silence detected, skipping brain.")
+                logger.info("SERVICE: Noise or silence detected. Skipping reasoning.")
                 yield VoiceResponse(text="")
                 return
 
-            # 2. Fetch Unified Context
-            context = await memory_service.get_full_context(
-                session_id, username, text_input, skill_id
-            )
-
-            # 3. Build System Prompt (includes Name check & Memory Palace)
-            system_prompt = await self._build_system_prompt(
-                skill_id, code_context, context
-            )
-
-            # 3.5 Sync Sensory memory (Code)
+            # 2. COGNITION: LangGraph Reasoning Loop
+            # We synchronize the immediate sensory state before running the graph.
             if code_context:
                 await memory_service.set_current_code(session_id, code_context)
 
-            # 4. Query Brain
-            from app.core.config import settings
-
-            logger.info(
-                f"Querying Brain ({settings.BRAIN_MODEL}) with transcript: '{text_input}'"
+            # Fetch the persona-based system prompt
+            system_prompt = self.skill_manager.get_system_prompt(
+                skill_id, code_context or ""
             )
-            brain_start = time.time()
-            try:
-                ai_text = await self.brain.generate_response(
-                    text_input,
-                    system_prompt,
-                    history=context["history"],
-                    provider=settings.BRAIN_PROVIDER,
-                    model=settings.BRAIN_MODEL,
-                )
-            except Exception as brain_err:
-                logger.error(f"SERVICE: Brain generation failed: {brain_err}")
-                ai_text = "I'm having trouble thinking right now. Let's try again."
-
-            brain_end = time.time()
-            logger.info(
-                f"Brain Took: {brain_end - brain_start:.2f}s. Response: '{ai_text}'"
+            system_prompt += (
+                "\n\nCRITICAL: You are an autonomous agent with ZERO initial context "
+                "in your prompt. You MUST use your tools (get_recent_history, "
+                "get_current_state, search_memory_palace) to see what is happening. "
+                "Never guess about the user's state or code."
             )
 
-            # --- STREAM POINT 1: Yield text immediately to clear Thinking state ---
+            from app.services.aries.pipeline.graph import get_aries_graph
+            from langchain_core.messages import HumanMessage
+
+            aries_graph = await get_aries_graph()
+            graph_start = time.time()
+
+            initial_state = {
+                "messages": [HumanMessage(content=text_input)],
+                "session_id": session_id,
+                "username": username,
+                "system_prompt": system_prompt,
+            }
+
+            ai_text = ""
+            # Execute the cyclic reasoning graph
+            async for event in aries_graph.astream(
+                initial_state, config={"configurable": {"thread_id": session_id}}
+            ):
+                for node_name, output in event.items():
+                    if node_name == "agent":
+                        last_msg = output["messages"][-1]
+                        # Capture the final text response if no more tool calls
+                        if (
+                            not hasattr(last_msg, "tool_calls")
+                            or not last_msg.tool_calls
+                        ):
+                            ai_text = last_msg.content
+                    elif node_name == "tools":
+                        logger.info("GRAPH: Autonomous tool execution completed.")
+
+            graph_duration = time.time() - graph_start
+            logger.info(f"GRAPH: Reasoning loop finished in {graph_duration:.2f}s")
+
+            if not ai_text:
+                ai_text = "I've processed your request. How else can I help?"
+
+            # 3. ACTION DISPATCHING (Backward Compatibility)
+            # Many actions are now tools in the graph, but some UI-only triggers remain.
             action_data = self.actions.parse_action(ai_text)
 
+            # Yield the final text and any parsed actions
             yield VoiceResponse(
                 text=ai_text,
                 action=action_data["action"] if action_data else None,
                 action_payload=action_data["payload"] if action_data else None,
             )
 
-            # 5. Generate Audio (TTS)
-            logger.info("Generating Speech via TTS...")
-            tts_start = time.time()
+            # 4. MOTOR OUTPUT: Text-to-Speech
+            logger.info("TTS: Generating audio for response...")
             try:
                 audio_bytes_out = await self.tts.speak(ai_text)
+                audio_b64_out = base64.b64encode(audio_bytes_out).decode("utf-8")
             except Exception as tts_err:
-                logger.error(f"SERVICE: TTS generation failed: {tts_err}")
-                audio_bytes_out = b""  # Fallback to text only
+                logger.error(f"TTS_ERROR: Failed to generate audio: {tts_err}")
+                audio_b64_out = None
 
-            tts_end = time.time()
-            logger.info(f"TTS Took: {tts_end - tts_start:.2f}s")
-
-            audio_b64_out = (
-                base64.b64encode(audio_bytes_out).decode("utf-8")
-                if audio_bytes_out
-                else None
-            )
-
-            total_time = time.time() - start_total
-            logger.info(f"TOTAL PIPELINE TIME: {total_time:.2f}s")
-
-            # 6. Handle Actions (e.g. RECORD_FACT)
-            if action_data:
-                action = action_data["action"]
-                payload = action_data["payload"]
-
-                if action == "RECORD_FACT":
-                    await memory_service.record_user_fact(
-                        username=username,
-                        concept=payload["concept"],
-                        value=payload["value"],
-                    )
-
-            # 7. Unified Memory Update
+            # 5. MEMORY CONSOLIDATION
+            # Record the interaction for long-term recall and contextual continuity.
             await memory_service.record_interaction(
                 session_id=session_id,
                 username=username,
@@ -177,15 +166,27 @@ class AriesService:
                 skill_id=skill_id,
             )
 
-            # --- STREAM POINT 2: Yield Final Response with Audio ---
-            yield VoiceResponse(
-                text="",  # Text already sent
-                audio_chunk=audio_b64_out,
+            # If the response triggered a manual fact recording action
+            if action_data and action_data["action"] == "RECORD_FACT":
+                payload = action_data["payload"]
+                await memory_service.record_user_fact(
+                    username=username,
+                    concept=payload["concept"],
+                    value=payload["value"],
+                )
+
+            # Yield the final audio chunk
+            yield VoiceResponse(text="", audio_chunk=audio_b64_out)
+
+            total_duration = time.time() - start_total
+            logger.info(f"SERVICE: Total voice pipeline took {total_duration:.2f}s")
+
+        except Exception:
+            logger.exception(
+                "SERVICE_ERROR: Fatal failure in voice interaction pipeline"
             )
-        except Exception as e:
-            logger.exception("SERVICE: Fatal error in process_voice_interaction")
             yield VoiceResponse(
-                text="I'm sorry, my systems are currently unresponsive."
+                text="I'm sorry, I encountered a temporary logic failure."
             )
 
     async def process_welcome_interaction(
@@ -193,192 +194,87 @@ class AriesService:
         session_id: str,
         username: str = "anonymous",
         skill_id: str = "aries-default",
-    ):
-        """
-        Generates a contextual welcome message based on the current problem state.
-        Bypasses full context for lower latency.
-        """
-        """
-        Generates a contextual welcome message based on current problem state.
+    ) -> AsyncGenerator[VoiceResponse, None]:
+        """Generates a proactive, contextual welcome message for the user.
+
+        Args:
+            session_id (str): The unique identifier for the user session.
+            username (str): The name of the user.
+            skill_id (str): The skill/persona to use.
+
+        Yields:
+            VoiceResponse: Incremental updates for streaming text-and-audio welcome.
         """
         try:
-            from app.services.aries.memory import memory_service
+            # Check the current problem state in Redis to customize the greeting.
+            problem = await aries_redis.get_current_problem(session_id)
 
-            context = await memory_service.get_lightweight_context(session_id)
-            current_problem = context.get("current_problem")
-
-            if current_problem:
-                title = current_problem.get("title", "this problem")
+            if problem:
+                title = problem.get("title", "this problem")
                 welcome_prompt = (
-                    f"You are Aries. The user is currently on the 'Solve with Me' page looking at the problem '{title}'. "
-                    "Briefly greet them (15 words max) and ask if they want to dive into the logic or start the Python implementation."
+                    f"You are Aries. The user is currently looking at '{title}'. "
+                    "Briefly greet them (15 words max) and ask if they need help with the logic."
                 )
             else:
                 welcome_prompt = (
-                    "You are Aries. The user is in your workspace but hasn't loaded a problem yet. "
-                    "Briefly greet them (15 words max) and suggest they search for a problem or tackle today's challenge."
+                    "You are Aries. The user hasn't loaded a problem yet. "
+                    "Briefly greet them (15 words max) and suggest starting with a simple challenge."
                 )
 
-            from app.core.config import settings
-
-            logger.info("Generating proactive welcome message...")
+            logger.info(f"SERVICE: Generating welcome for session {session_id}")
 
             full_text = ""
             sentence_buffer = ""
 
+            # Use the brain adapter directly for streaming welcome (no tool calling needed here).
             async for chunk in self.brain.generate_response_stream(
                 "System: Introduce yourself to the user.",
                 welcome_prompt,
                 history=[],
-                provider=settings.BRAIN_PROVIDER,
-                model=settings.BRAIN_MODEL,
             ):
-                logger.debug(f"Welcome Brain Chunk: '{chunk}'")
                 full_text += chunk
                 sentence_buffer += chunk
 
                 yield VoiceResponse(text=chunk)
 
+                # Stream audio by sentence boundaries to reduce time-to-first-sound.
                 if (
-                    any(punct in chunk for punct in [".", "?", "!"])
+                    any(p in chunk for p in (".", "?", "!"))
                     and len(sentence_buffer) > 15
                 ):
-                    logger.info(
-                        f"Welcome TTS triggering for sentence: '{sentence_buffer.strip()}'"
-                    )
                     audio_bytes = await self.tts.speak(sentence_buffer.strip())
                     audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
                     yield VoiceResponse(text="", audio_chunk=audio_b64)
                     sentence_buffer = ""
 
+            # Flush the remaining buffer
             if sentence_buffer.strip():
                 audio_bytes = await self.tts.speak(sentence_buffer.strip())
                 audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
                 yield VoiceResponse(text="", audio_chunk=audio_b64)
 
-            # Record in memory
+            # Record the greeting in memory so Aries knows it already said 'hello'.
             await memory_service.record_interaction(
                 session_id=session_id,
                 username=username,
-                user_msg="[SYSTEM_EVENT: LANDED]",
+                user_msg="[SYSTEM_EVENT: WELCOME]",
                 ai_msg=full_text,
                 skill_id=skill_id,
             )
 
         except Exception as e:
-            logger.exception("Welcome interaction failed")
+            logger.error(f"SERVICE_ERROR: Welcome message generation failed: {e}")
 
     def _is_noise(self, text: str) -> bool:
+        """Determines if the transcribed text is likely background noise or silence."""
         if not text:
             return True
         clean_text = text.strip().lower().rstrip(".,!?")
-        # Allow short common words like 'yes', 'no', 'go', 'hi'
-        if len(clean_text) < 2:
-            return True
-        # Filter typical STT artifacts that aren't real words
-        if clean_text in ["it", "it it is", "it's", "the", "a", "um"]:
+        # Filter typical low-entropy STT artifacts.
+        if len(clean_text) < 2 or clean_text in ["it", "it is", "the", "um", "uh"]:
             return True
         return False
 
-    async def _build_system_prompt(
-        self, skill_id: str, code_context: str, context: dict
-    ) -> str:
-        current_code = code_context or context.get("current_code") or ""
-        current_problem = context.get("current_problem")
 
-        # Check for user name in context
-        user_name = next(
-            (
-                f["content"]
-                for f in context.get("user_facts", [])
-                if "real_name" in f["concept"]
-            ),
-            None,
-        )
-
-        system_prompt = self.skill_manager.get_system_prompt(skill_id, current_code)
-
-        if not user_name:
-            system_prompt += (
-                "\n\nCRITICAL: You do not know the user's name yet. If they say 'Hey Aries' or introduce themselves, "
-                "provide a quick overview of the app (mention coding companion, LeetCode problems, and voice search) "
-                "and ask 'What should I call you?'. "
-                "Once they provide a name, you MUST record it using `[RECORD_FACT: real_name | the_name]`."
-            )
-        else:
-            system_prompt += f"\n\nYou are talking to {user_name}. Use their name occasionally, but drop it from your very first greeting of this session (the intro); keep the intro general as a coding companion overview."
-
-        if current_problem:
-            title = current_problem.get("title", "Unknown")
-            system_prompt += f"\n\n- CURRENTLY LOADED PROBLEM: {title}"
-            system_prompt += "\n- IMPORTANT: The user is already looking at this problem in the UI. Do NOT offer to load or search for it. Instead, help them solve it or answer questions about its logic."
-
-            summary = context.get("problem_summary")
-            if summary:
-                system_prompt += f"\nProblem Summary: {summary}\n"
-            else:
-                import re
-
-                desc = re.sub("<[^<]+?>", "", current_problem.get("description", ""))
-                system_prompt += f"Problem Details: {desc[:500]}...\n"
-
-        code_results = context.get("code_results")
-        if code_results:
-            system_prompt += "\nRecent Code Execution Results:\n"
-            for res in code_results:
-                status = res.get("status", "Unknown")
-                system_prompt += f"- Type: {res.get('type')}, Status: {status}\n"
-
-        semantic_knowledge = context.get("semantic_knowledge")
-        if semantic_knowledge:
-            system_prompt += "\n\nRelevant Knowledge Highlights:\n"
-            for hit in semantic_knowledge:
-                system_prompt += f"- {hit['concept']}: {hit['content']}\n"
-
-        episodes = context.get("episodes")
-        if episodes:
-            system_prompt += "\n\nRecent Activity (Manual UI Actions):\n"
-            for ep in episodes:
-                for interaction in ep.get("interactions", []):
-                    if interaction.get("role") == "system":
-                        evt = interaction.get("event")
-                        dtl = interaction.get("details", {})
-                        system_prompt += (
-                            f"- User manually triggered: {evt} (Details: {dtl})\n"
-                        )
-
-        user_facts = context.get("user_facts")
-        if user_facts:
-            system_prompt += "\n\nMy Memory Palace - What I know about you:\n"
-            for fact in user_facts:
-                system_prompt += f"- {fact['content']}\n"
-
-        # Aries Toolbox (Tool-oriented design)
-        system_prompt += "\n\n=== ARIES TOOLBOX ===\n"
-        system_prompt += (
-            "Your Skill defines your BEHAVIOR (persona and tutorial style). "
-            "You should proactively summarize the user's progress and record it using RECORD_FACT. "
-        )
-        system_prompt += (
-            "The following Tools define your ACTIONS and system capabilities:\n"
-        )
-
-        daily = context.get("daily_challenge")
-        if daily:
-            system_prompt += f"1. [LOAD_PROBLEM: {daily['slug']}] - Use this to load Today's LeetCode Challenge: {daily['title']}.\n"
-
-        system_prompt += "2. [LOAD_PROBLEM: slug] - Use this to load any specific LeetCode problem by its slug.\n"
-        system_prompt += "3. [SEARCH_PROBLEMS: query] - Use this to search for problems on LeetCode based on keywords or concepts.\n"
-        system_prompt += "4. [RUN_CODE] - Use this to execute the current code in the editor with sample test cases.\n"
-        system_prompt += "5. [SUBMIT_CODE] - Use this to submit the current code for official LeetCode verification.\n"
-        system_prompt += "6. [NAVIGATE: view] - Use this to switch between 'home', 'problems', and 'solve' views.\n"
-        system_prompt += "7. [RECORD_FACT: concept | value] - Use this to persist a fact about the user (e.g. [RECORD_FACT: weakness | recursion]). This information will be stored in your 'Memory Palace' and available in all future sessions.\n"
-
-        system_prompt += "Note: Always confirm with the user before triggering a tool (2-step protocol).\n"
-        system_prompt += "CRITICAL: To trigger a tool, you MUST use the exact syntax `[TOOL_NAME: argument]` including square brackets. These triggers will be automatically stripped from your spoken response, so you do not need to hide them or apologize for them.\n"
-        system_prompt += "Aries is 'Omniscient': You are notified of every manual user action (clicks, searches, runs) via System Episodes in your context. Use this knowledge to stay in sync with the user's manual activities."
-
-        return system_prompt
-
-
+# Global singleton instance of the Aries service.
 aries_service = AriesService()

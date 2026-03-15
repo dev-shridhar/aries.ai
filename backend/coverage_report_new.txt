@@ -1,0 +1,135 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.11, pytest-9.0.2, pluggy-1.6.0
+rootdir: /Users/shridharkulkarni/personal/learning-mcp/dsa-agent/backend
+configfile: pyproject.toml
+plugins: anyio-4.12.1, asyncio-1.3.0, langsmith-0.7.17, cov-7.0.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 86 items
+
+tests/api/aries/test_aries_router.py .......                             [  8%]
+tests/api/compiler/test_compiler_router.py ..                            [ 10%]
+tests/api/mcp/test_mcp_router.py ...                                     [ 13%]
+tests/api/user/test_user_router.py ...                                   [ 17%]
+tests/infrastructure/aries/test_chroma_client.py ..                      [ 19%]
+tests/infrastructure/aries/test_mongo_client.py ............             [ 33%]
+tests/infrastructure/compiler/test_executor.py ......                    [ 40%]
+tests/services/aries/integration/test_memory_semantic.py ..              [ 43%]
+tests/services/aries/test_actions_triggers.py .......                    [ 51%]
+tests/services/aries/test_aries_service.py ..                            [ 53%]
+tests/services/aries/test_brain.py ....                                  [ 58%]
+tests/services/aries/test_graph.py ....                                  [ 62%]
+tests/services/aries/test_mcp_tools.py ...                               [ 66%]
+tests/services/aries/test_memory.py ...                                  [ 69%]
+tests/services/aries/test_skills_manager.py ......                       [ 76%]
+tests/services/aries/test_stt.py ...                                     [ 80%]
+tests/services/aries/test_tools.py ....                                  [ 84%]
+tests/services/compiler/test_compiler_service.py ...                     [ 88%]
+tests/services/compiler/test_testcase_agent.py .....                     [ 94%]
+tests/services/mcp/test_mcp_service.py ..                                [ 96%]
+tests/services/user/test_user_service.py ...                             [100%]
+
+=============================== warnings summary ===============================
+tests/api/aries/test_aries_router.py::test_aries_websocket_welcome_event
+  /Users/shridharkulkarni/personal/learning-mcp/dsa-agent/backend/app/api/aries/router.py:72: PydanticDeprecatedSince20: The `dict` method is deprecated; use `model_dump` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    await websocket.send_json(response.dict())
+
+tests/api/aries/test_aries_router.py::test_aries_websocket_process_audio_empty
+  /Users/shridharkulkarni/personal/learning-mcp/dsa-agent/backend/app/api/aries/router.py:86: PydanticDeprecatedSince20: The `dict` method is deprecated; use `model_dump` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    await websocket.send_json(VoiceResponse(text="").dict())
+
+tests/api/aries/test_aries_router.py::test_aries_websocket_process_audio_success
+  /Users/shridharkulkarni/personal/learning-mcp/dsa-agent/backend/app/api/aries/router.py:99: PydanticDeprecatedSince20: The `dict` method is deprecated; use `model_dump` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    await websocket.send_json(response.dict())
+
+tests/api/aries/test_aries_router.py::test_aries_websocket_process_audio_failure
+  /Users/shridharkulkarni/personal/learning-mcp/dsa-agent/backend/app/api/aries/router.py:108: PydanticDeprecatedSince20: The `dict` method is deprecated; use `model_dump` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    ).dict()
+
+tests/api/mcp/test_mcp_router.py::test_search_problems_endpoint
+tests/services/aries/test_memory.py::test_record_event
+  /Users/shridharkulkarni/personal/learning-mcp/dsa-agent/backend/app/services/aries/memory.py:142: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "timestamp": datetime.datetime.utcnow().isoformat(),
+
+tests/api/mcp/test_mcp_router.py::test_search_problems_endpoint
+tests/infrastructure/aries/test_mongo_client.py::test_mongo_save_episode
+  /Users/shridharkulkarni/personal/learning-mcp/dsa-agent/backend/app/infrastructure/aries/mongo_client.py:143: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "timestamp": datetime.datetime.utcnow(),
+
+tests/infrastructure/aries/test_mongo_client.py::test_mongo_save_user_profile
+  /Users/shridharkulkarni/personal/learning-mcp/dsa-agent/backend/app/infrastructure/aries/mongo_client.py:103: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    {"$set": {**profile, "last_sync": datetime.datetime.utcnow()}},
+
+tests/infrastructure/aries/test_mongo_client.py::test_mongo_save_semantic_fact
+  /Users/shridharkulkarni/personal/learning-mcp/dsa-agent/backend/app/infrastructure/aries/mongo_client.py:195: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "timestamp": datetime.datetime.utcnow(),
+
+tests/infrastructure/aries/test_mongo_client.py::test_mongo_save_code_session
+  /Users/shridharkulkarni/personal/learning-mcp/dsa-agent/backend/app/infrastructure/aries/mongo_client.py:238: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    session_data["timestamp"] = datetime.datetime.utcnow()
+
+tests/infrastructure/aries/test_mongo_client.py::test_mongo_save_submission
+  /Users/shridharkulkarni/personal/learning-mcp/dsa-agent/backend/app/infrastructure/aries/mongo_client.py:277: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    submission["timestamp"] = datetime.datetime.utcnow()
+
+tests/infrastructure/compiler/test_executor.py::test_run_driver_script_exception
+  /Users/shridharkulkarni/personal/learning-mcp/dsa-agent/backend/.venv/lib/python3.12/site-packages/_pytest/raises.py:640: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    def matches(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/services/aries/integration/test_memory_semantic.py::test_problem_summary_flow
+  /opt/homebrew/Cellar/python@3.12/3.12.11/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py:2217: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+______________ coverage: platform darwin, python 3.12.11-final-0 _______________
+
+Name                                        Stmts   Miss  Cover   Missing
+-------------------------------------------------------------------------
+app/api/aries/__init__.py                       0      0   100%
+app/api/aries/router.py                        58      3    95%   120, 126-127
+app/api/compiler/router.py                     71     45    37%   41, 51-53, 77-78, 88-90, 109-181
+app/api/mcp/router.py                         109     36    67%   72, 91-92, 97-99, 124, 157-159, 172-194, 204-206, 244, 250-271, 288, 303-304, 308-312
+app/api/user/__init__.py                        0      0   100%
+app/api/user/router.py                         21      2    90%   58, 62
+app/core/aries/__init__.py                      0      0   100%
+app/core/aries/models.py                       24      0   100%
+app/core/compiler/models.py                    45      0   100%
+app/core/config.py                             15      0   100%
+app/core/mcp/models.py                         23      0   100%
+app/core/user/__init__.py                       0      0   100%
+app/core/user/models.py                        10      0   100%
+app/infrastructure/aries/__init__.py            0      0   100%
+app/infrastructure/aries/chroma_client.py      29      3    90%   107-109
+app/infrastructure/aries/mongo_client.py       75      0   100%
+app/infrastructure/aries/redis_client.py       60     35    42%   43-45, 49-52, 58, 71-80, 91-93, 99, 103-104, 108-109, 115, 124-125, 129-130, 136, 147-148, 152-154
+app/infrastructure/compiler/__init__.py         0      0   100%
+app/infrastructure/compiler/executor.py        39      0   100%
+app/infrastructure/mcp/__init__.py              0      0   100%
+app/infrastructure/mcp/client.py               53     36    32%   37-41, 56-105, 120-132
+app/main.py                                    38     14    63%   46-63
+app/services/aries/__init__.py                  0      0   100%
+app/services/aries/actions/__init__.py          0      0   100%
+app/services/aries/actions/triggers.py         27      0   100%
+app/services/aries/memory.py                   65     10    85%   100-105, 155, 166, 210-212, 286-287
+app/services/aries/pipeline/__init__.py         0      0   100%
+app/services/aries/pipeline/brain.py           85     32    62%   80, 88-91, 119, 128-134, 158-162, 168-179, 185-200
+app/services/aries/pipeline/graph.py           45      6    87%   92-102
+app/services/aries/pipeline/mcp_tools.py       42      2    95%   92, 127
+app/services/aries/pipeline/stt.py             21      0   100%
+app/services/aries/pipeline/tools.py           49     13    73%   41-43, 72, 75-77, 113-115, 134-137
+app/services/aries/pipeline/tts.py             12      4    67%   40-51
+app/services/aries/service.py                 112     28    75%   66-68, 83-85, 90, 130-131, 137, 155-157, 171-172, 184-188, 213-214, 245-248, 265-266, 271, 275
+app/services/aries/skills/__init__.py           0      0   100%
+app/services/aries/skills/manager.py           33      0   100%
+app/services/compiler/service.py               31      8    74%   165-178
+app/services/compiler/testcase_agent.py        28      0   100%
+app/services/mcp/service.py                     8      0   100%
+app/services/user/__init__.py                   0      0   100%
+app/services/user/service.py                   22      6    73%   37-39, 54-56
+-------------------------------------------------------------------------
+TOTAL                                        1250    283    77%
+======================= 86 passed, 14 warnings in 3.00s ========================

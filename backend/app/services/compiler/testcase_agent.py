@@ -1,8 +1,16 @@
+"""Agentic service for automated hidden test-case generation.
+
+This module leverages Large Language Models (LLMs) to analyze problem
+constraints and generate edge-case-focused test cases that are used
+to evaluate user solutions beyond the basic examples.
+"""
+
 import json
 import logging
-import os
+import re
+from typing import Any
 
-from dotenv import load_dotenv
+from app.core.config import settings
 from groq import Groq
 
 logger = logging.getLogger(__name__)
@@ -10,32 +18,41 @@ logger = logging.getLogger(__name__)
 
 async def generate_hidden_testcases(
     title: str, description: str, constraints: str, num_cases: int = 5
-) -> list[dict]:
+) -> list[dict[str, Any]]:
+    """Analyzes a LeetCode problem and generates robust hidden test cases.
+
+    This function prompts an LLM to act as an elite testing engineer,
+    focusing on boundary conditions, empty states, and maximum constraints.
+
+    Args:
+        title (str): The title of the problem.
+        description (str): Full markdown description of the problem logic.
+        constraints (str): Explicit problem constraints (e.g., "1 <= n <= 10^5").
+        num_cases (int): The number of unique test cases to generate.
+
+    Returns:
+        List[Dict[str, Any]]: A list of dictionaries with 'input' and
+            'expected_output' keys. Returns an empty list on failure.
     """
-    Analyzes a LeetCode problem and generates robust hidden test cases.
-    Returns a list of dictionaries with 'input' and 'expected_output' keys.
-    """
-    load_dotenv()
-    api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        logger.error("GROQ_API_KEY not set. Cannot generate test cases.")
+    if not settings.GROQ_API_KEY:
+        logger.error("TC_AGENT: GROQ_API_KEY not configured. Skipping generation.")
         return []
 
-    client = Groq(api_key=api_key)
+    client = Groq(api_key=settings.GROQ_API_KEY)
 
     system_prompt = f"""You are an elite competitive programmer and testing engineer.
 Your task is to generate {num_cases} highly tricky, edge-case focused hidden test cases for a coding problem.
 
 You MUST follow the constraints strictly.
-You MUST format your output as a strict JSON object with a single key "testcases" containing an array of objects. Do not include markdown formatting or ANY other text.
+You MUST format your output as a strict JSON object with a single key "testcases" containing an array of objects.
 
 Format Rules:
-1. Each object in the "testcases" array represents ONE complete test case.
-2. The object MUST have two keys: "input" and "expected_output".
-3. The "input" string MUST represent the exact multiline string format LeetCode uses, where multiple arguments are separated by a newline (`\\n`). You MUST correctly deduce the exact number of input arguments the problem expects and output exactly that many lines.
-4. The "expected_output" string MUST be the strict JSON representation of the correct answer for that input. You MUST verify the logic mentally or step-by-step; do NOT guess. For example, in a "Two Sum" problem, if you provide `[2,7,11,15]\n1000000000`, the expected output MUST NOT be `[0,1]` as that equals 9, not 1,000,000,000.
+1. Each object represents ONE complete test case.
+2. Keys: "input" (newline-separated arguments) and "expected_output" (JSON serialization).
+3. The "input" string MUST represent the exact multiline format LeetCode uses.
+4. The "expected_output" MUST be logically verified and strictly serialized.
 
-Example for a problem expecting 2 arguments (array and int):
+Example:
 {{
   "testcases": [
     {{
@@ -47,43 +64,34 @@ Example for a problem expecting 2 arguments (array and int):
 """
 
     user_prompt = f"""Problem Title: {title}
+Problem Description: {description}
+Constraints: {constraints}
 
-Problem Description:
-{description}
-
-Constraints:
-{constraints}
-
-Generate exactly {num_cases} hidden test cases that evaluate maximum limits, minimum limits, empty/null states (if allowed), and tricky logic edge cases."""
+Generate exactly {num_cases} hidden test cases evaluating max/min limits and tricky logic edge cases."""
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=settings.BRAIN_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            response_format={
-                "type": "json_object"
-            },  # We will prompt for a wrapped object to ensure valid JSON from standard parsing if needed, actually dict wrapping is safer for response_format
+            response_format={"type": "json_object"},
         )
 
         content = response.choices[0].message.content
         if not content:
             return []
 
+        # Robust JSON cleaning
         content = content.strip()
-        if content.startswith("```json"):
-            content = content[7:]
-        elif content.startswith("```"):
-            content = content[3:]
-        if content.endswith("```"):
-            content = content[:-3]
-        content = content.strip()
+        if "```" in content:
+            content = re.sub(r"```[a-z]*\n", "", content)
+            content = content.replace("```", "")
 
-        data = json.loads(content)
+        data = json.loads(content.strip())
         return data.get("testcases", [])
 
     except Exception as e:
-        logger.exception("Testcase Agent failed")
+        logger.exception(f"TC_AGENT: Generation failed for '{title}': {e}")
         return []

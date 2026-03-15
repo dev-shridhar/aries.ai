@@ -1,42 +1,70 @@
-import asyncio
 import datetime
-import json
 import logging
-from typing import Any, List, Optional
+from typing import Any
 
+from app.core.config import settings
+from app.infrastructure.aries.chroma_client import chroma_manager
 from app.infrastructure.aries.mongo_client import aries_mongo
 from app.infrastructure.aries.redis_client import aries_redis
+from app.services.aries.pipeline.brain import brain_adapter
 
 logger = logging.getLogger(__name__)
 
 
 class MemoryService:
-    """Unified coordinator for Sensory, Short-term, Episodic, and Semantic memory."""
+    """Unified coordinator for the Aries agent's multi-tier memory architecture.
 
-    async def record_user_fact(self, username: str, concept: str, value: str):
-        """Persists a fact about the user in the 'Memory Palace'."""
-        from app.core.config import settings
-        from app.services.aries.pipeline.brain import brain_adapter
+    MemoryService provides a high-level API for interacting with the different
+    layers of cognitive storage:
+    1. Sensory/Short-term Memory (Redis): Immediate context and editor state.
+    2. Semantic Memory (ChromaDB): Vector-based RAG for facts and logic.
+    3. Episodic Memory (MongoDB): Long-term conversation and activity logs.
 
-        # Generate embedding for the fact
-        vector = await brain_adapter.get_embedding(
-            f"{concept}: {value}", model=settings.EMBEDDING_MODEL
+    This service ensures that all memory updates are synchronized across the
+    appropriate tiers based on their TTL and retrieval requirements.
+    """
+
+    async def record_user_fact(self, username: str, concept: str, value: str) -> None:
+        """Persists a personality fact in the 'Memory Palace' (ChromaDB).
+
+        Args:
+            username (str): The name of the user.
+            concept (str): The categorized concept (e.g., 'coding_preference').
+            value (str): The raw text fact retrieved from conversation.
+        """
+        fact_id = f"user_fact:{username}:{concept}"
+        metadata = {
+            "username": username,
+            "concept": concept,
+            "skill_id": "user-personality",
+            "type": "fact",
+        }
+
+        await chroma_manager.add_fact(
+            collection_name="user_memory",
+            content=value,
+            metadata=metadata,
+            fact_id=fact_id,
         )
-
-        fact_key = f"user_fact:{username}:{concept}"
-        await aries_mongo.save_semantic_fact(
-            concept=fact_key, content=value, skill_id="user-personality", vector=vector
-        )
-        logger.info(f"Recorded embedded fact for {username}: {concept} = {value}")
+        logger.info(f"MEMORY: Recorded fact for '{username}' in ChromaDB: {concept}")
 
     async def summarize_and_store_problem(
         self, slug: str, title: str, description: str
-    ):
-        """Asynchronously summarizes a problem and stores it in semantic memory."""
-        from app.core.config import settings
-        from app.services.aries.pipeline.brain import brain_adapter
+    ) -> None:
+        """Summarizes a problem and indexes it for semantic retrieval.
 
-        system_prompt = "You are a DSA expert. Summarize the following coding problem into 2-3 concise sentences. Focus on the core objective and constraints."
+        This background task ensures that Aries has a high-level 'understanding'
+        of new problems before they are even loaded into the main context.
+
+        Args:
+            slug (str): Problem slug identifier.
+            title (str): Problem title.
+            description (str): Raw HTML or text description.
+        """
+        system_prompt = (
+            "You are a DSA expert. Summarize the following coding problem "
+            "into 2-3 concise sentences. Focus on the core objective and constraints."
+        )
         user_msg = f"Problem: {title}\n\n{description}"
 
         # 1. Summarization with Configured Brain
@@ -47,31 +75,33 @@ class MemoryService:
             model=settings.BRAIN_MODEL,
         )
 
-        # 2. Embedding with Configured Model
-        vector = await brain_adapter.get_embedding(
-            description, model=settings.EMBEDDING_MODEL
-        )
-
-        # 3. Store in Semantic Memory
-        await aries_mongo.save_semantic_fact(
-            concept=f"problem_summary:{slug}",
+        # 2. Store in Semantic Memory
+        await chroma_manager.add_fact(
+            collection_name="problem_summaries",
             content=summary,
-            skill_id="aries-default",
-            vector=vector,
+            metadata={"slug": slug, "title": title, "type": "problem_summary"},
+            fact_id=f"problem_summary:{slug}",
         )
-        logger.info(
-            f"Summarized and indexed problem: {slug} using {settings.BRAIN_PROVIDER}/{settings.BRAIN_MODEL}"
-        )
+        logger.info(f"MEMORY: Summarized and indexed problem '{slug}' in ChromaDB.")
 
     async def record_interaction(
         self, session_id: str, username: str, user_msg: str, ai_msg: str, skill_id: str
-    ):
-        """Standard sync for a conversation turn."""
-        # 1. Short-term (Redis)
-        await aries_redis.add_message(session_id, "user", user_msg)
-        await aries_redis.add_message(session_id, "assistant", ai_msg)
+    ) -> None:
+        """Records a single conversation turn across all appropriate memory tiers.
 
-        # 2. Episodic (Mongo)
+        Args:
+            session_id (str): The unique session identifier.
+            username (str): The name of the user.
+            user_msg (str): Transcription of what the user said.
+            ai_msg (str): The text response generated by the AI.
+            skill_id (str): The active Aries skill persona.
+        """
+        # 1. Short-term (Redis): Update the rolling conversation window.
+        from app.services.aries.pipeline.history import AriesHistoryManager
+
+        await AriesHistoryManager.add_interaction(session_id, user_msg, ai_msg)
+
+        # 2. Episodic (MongoDB): Archive the interaction for long-term review.
         await aries_mongo.save_episode(
             session_id=session_id,
             user_id=username,
@@ -79,22 +109,28 @@ class MemoryService:
                 {
                     "role": "user",
                     "content": user_msg,
-                    "timestamp": datetime.datetime.utcnow(),
+                    "timestamp": datetime.datetime.utcnow().isoformat(),
                 },
                 {
                     "role": "aries",
                     "content": ai_msg,
-                    "timestamp": datetime.datetime.utcnow(),
+                    "timestamp": datetime.datetime.utcnow().isoformat(),
                 },
             ],
             summary=f"Turn in {skill_id}",
         )
 
     async def record_event(
-        self, session_id: str, username: str, event_type: str, details: dict
-    ):
-        """Captures a single system or user event (e.g. LOAD_PROBLEM)."""
-        # 1. Episodic (Mongo)
+        self, session_id: str, username: str, event_type: str, details: dict[str, Any]
+    ) -> None:
+        """Captures a system or user-triggered UI event in episodic memory.
+
+        Args:
+            session_id (str): The unique session identifier.
+            username (str): The name of the user.
+            event_type (str): The event name (e.g., 'LOAD_PROBLEM').
+            details (Dict[str, Any]): Structured metadata about the event.
+        """
         await aries_mongo.save_episode(
             session_id=session_id,
             user_id=username,
@@ -103,20 +139,30 @@ class MemoryService:
                     "role": "system",
                     "event": event_type,
                     "details": details,
-                    "timestamp": datetime.datetime.utcnow(),
+                    "timestamp": datetime.datetime.utcnow().isoformat(),
                 }
             ],
             summary=f"Event: {event_type}",
         )
 
-    async def set_current_code(self, session_id: str, code: str):
-        """Pairs the latest code from the UI with the session in Redis."""
-        """Sync code sensory memory."""
+    async def set_current_code(self, session_id: str, code: str) -> None:
+        """Updates the agent's immediate sensory perception of the code editor.
+
+        Args:
+            session_id (str): The unique session identifier.
+            code (str): The raw source code from the editor.
+        """
         await aries_redis.set_current_code(session_id, code)
 
-    async def set_current_problem(self, session_id: str, problem_data: dict):
-        """Stores the currently loaded problem metadata in Redis sensory memory."""
-        """Sync problem context sensory memory."""
+    async def set_current_problem(
+        self, session_id: str, problem_data: dict[str, Any]
+    ) -> None:
+        """Updates the sensory perception of the currently active LeetCode problem.
+
+        Args:
+            session_id (str): The unique session identifier.
+            problem_data (Dict[str, Any]): Problem metadata dictionary.
+        """
         await aries_redis.set_current_problem(session_id, problem_data)
 
     async def record_code_activity(
@@ -127,12 +173,21 @@ class MemoryService:
         activity_type: str,
         results: Any,
         status: str,
-    ):
-        """Sync code execution events across tiers."""
-        # 1. Short-term (Redis) - Keep the latest code snippet
+    ) -> None:
+        """Synchronizes a code execution event across sensory and episodic tiers.
+
+        Args:
+            session_id (str): The session identifier.
+            username (str): The username.
+            code (str): The source code actually executed.
+            activity_type (str): 'RUN' or 'SUBMIT'.
+            results (Any): The output or test case results.
+            status (str): Success or failure label.
+        """
+        # 1. Update Sensory (Redis): The executed code is now the 'active' code.
         await aries_redis.set_current_code(session_id, code)
 
-        # 2. Results (Mongo)
+        # 2. Archive Episodic (MongoDB): Record the detailed result objectively.
         session_data = {
             "session_id": session_id,
             "username": username,
@@ -143,11 +198,15 @@ class MemoryService:
         }
         await aries_mongo.save_code_session(session_data)
 
-        # 3. Episodic Link (Optional - let agent know in chat history if needed)
-        # We could add a system message to Redis here if we wanted immediate agent reaction
+    async def get_lightweight_context(self, session_id: str) -> dict[str, Any]:
+        """Fetches high-speed, hot context from Redis sensory memory only.
 
-    async def get_lightweight_context(self, session_id: str) -> dict:
-        """Fetch only the most critical hot context from Redis (no Mongo/MCP)."""
+        Args:
+            session_id (str): The unique session identifier.
+
+        Returns:
+            Dict[str, Any]: History and Problem metadata.
+        """
         history = await aries_redis.get_context(session_id)
         current_problem = await aries_redis.get_current_problem(session_id)
         return {
@@ -161,90 +220,71 @@ class MemoryService:
         username: str,
         query: str = "",
         skill_id: str = "aries-default",
-    ) -> dict:
-        """Fetch unified context for LLM reasoning."""
-        # 1. Hot Context (Redis)
+    ) -> dict[str, Any]:
+        """Assembles the complete cognitive context for the reasoning engine.
+
+        This method performs a cross-tier retrieval to build a unified 'mind'
+        for the agent. It includes:
+        - Redis: Conversation history and editor state.
+        - MongoDB: Recent code results and system events.
+        - ChromaDB: Semantic user facts and problem summaries.
+
+        Args:
+            session_id (str): The unique session ID.
+            username (str): The user's name.
+            query (str): The user's latest query (used for semantic RAG).
+            skill_id (str): The active skill persona.
+
+        Returns:
+            Dict[str, Any]: A rich dictionary containing all retrieval results.
+        """
+        # 1. RETRIEVE HOT CONTEXT (Sensory)
         history = await aries_redis.get_context(session_id)
         current_code = await aries_redis.get_current_code(session_id)
         current_problem = await aries_redis.get_current_problem(session_id)
 
-        # 2. Episodic (Mongo) - Recent Code Results
+        # 2. RETRIEVE EPISODIC CONTEXT (Logs)
         code_results = await aries_mongo.get_recent_code_sessions(
             username, session_id, limit=2
         )
-
-        # 3. Episodic (Mongo) - Recent Interaction/System Episodes
         episodes = await aries_mongo.get_recent_episodes(username, limit=3)
 
-        # 4. Semantic (Mongo) - Persistent User Facts (Memory Palace)
-        # Prefix search for explicit facts + semantic search for relatedness
-        direct_facts = await aries_mongo.query_semantic_memory(
-            f"user_fact:{username}:", skill_id="user-personality", limit=10
-        )
-
-        # Hybrid Semantic Check for facts
-        semantic_facts = []
-        if query and len(query) > 5:
-            from app.core.config import settings
-            from app.services.aries.pipeline.brain import brain_adapter
-
-            query_vector = await brain_adapter.get_embedding(
-                query, model=settings.EMBEDDING_MODEL
+        # 3. RETRIEVE SEMANTIC CONTEXT (Memory Palace)
+        user_facts = []
+        semantic_hits = []
+        if query:
+            user_facts = await chroma_manager.similarity_search(
+                collection_name="user_memory",
+                query=query,
+                limit=5,
+                filter={"username": username},
             )
-            semantic_facts = await aries_mongo.semantic_search(
-                vector=query_vector, skill_id="user-personality", limit=3
+            semantic_hits = await chroma_manager.similarity_search(
+                collection_name="knowledge_base", query=query, limit=3
             )
 
-        # Merge and dedup facts
-        all_facts = {f["concept"]: f for f in direct_facts}
-        for f in semantic_facts:
-            all_facts[f["concept"]] = f
-
-        user_facts = list(all_facts.values())
-
-        # 5. Semantic (Mongo) - Relevant Knowledge
-        semantic_hits = await aries_mongo.query_semantic_memory(query, skill_id)
-
-        # 4. Hybrid Logic: If we have a problem, ensure the summary is fetched
+        # 4. PROBLEM HYBRID LOGIC
         problem_summary = None
         if current_problem and current_problem.get("slug"):
             slug = current_problem["slug"]
-            summaries = await aries_mongo.query_semantic_memory(
-                f"problem_summary:{slug}", skill_id
+            summaries = await chroma_manager.similarity_search(
+                collection_name="problem_summaries",
+                query=slug,
+                limit=1,
+                filter={"slug": slug},
             )
             if summaries:
                 problem_summary = summaries[0]["content"]
 
-        # 5. Daily Challenge (Inject for proactive mapping)
+        # 5. DYNAMIC DATA: Daily Challenge Fetch (Proactive Context)
         daily_challenge = None
         try:
             from app.api.mcp.router import daily_challenge_cache
 
             if daily_challenge_cache:
                 daily_challenge = daily_challenge_cache.get("data")
-            else:
-                # If no cache, try to fetch once but don't block heavily
-                from app.api.mcp.router import mcp_service
-
-                async with mcp_service.get_session() as (session, _):
-                    raw = await mcp_service.call_tool(
-                        session, "get_daily_challenge", {}
-                    )
-                    data = json.loads(raw)
-                    problem = data.get("problem", data)
-                    question = (
-                        (problem.get("question") or problem)
-                        if isinstance(problem, dict)
-                        else {}
-                    )
-                    if isinstance(question, dict):
-                        daily_challenge = {
-                            "slug": question.get("titleSlug"),
-                            "title": question.get("title"),
-                        }
         except Exception as e:
-            logger.debug(f"Daily challenge fetch failed: {e}")
-            pass
+            logger.debug(f"MEMORY: Daily challenge cache lookup failed: {e}")
 
         return {
             "history": history,
@@ -259,4 +299,5 @@ class MemoryService:
         }
 
 
+# Global instance of the MemoryService.
 memory_service = MemoryService()

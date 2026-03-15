@@ -1,206 +1,204 @@
+import json
 import logging
-from typing import Dict, List, Optional
+from collections.abc import AsyncGenerator
 
 import httpx
-from groq import AsyncGroq
-
 from app.core.config import settings
+from langchain_core.messages import (AIMessage, BaseMessage, HumanMessage,
+                                     SystemMessage)
+from langchain_groq import ChatGroq
 
 logger = logging.getLogger(__name__)
 
 
 class BrainAdapter:
+    """Adapter for interacting with Large Language Models using LangChain.
+
+    This class serves as the abstraction layer for LLM providers. It primarily
+    uses Groq (Llama 3.3) for high-speed agentic reasoning but maintains a local
+    fallback to Ollama for privacy-focused or offline tasks.
+
+    Attributes:
+        groq_llm (ChatGroq): The primary LangChain-compatible LLM instance.
+        ollama_base_url (str): Local endpoint for Ollama inference.
+    """
+
     def __init__(self):
-        self.groq_client = AsyncGroq(api_key=settings.GROQ_API_KEY)
-        self.ollama_base_url = "http://localhost:11434/api/chat"
+        """Initializes the BrainAdapter with configured provider settings."""
+        self.groq_llm = ChatGroq(
+            api_key=settings.GROQ_API_KEY,
+            model_name=settings.BRAIN_MODEL,
+        )
+        self.ollama_base_url = "http://localhost:11434/api"
+
+    def _convert_history(self, history: list[dict[str, str]]) -> list[BaseMessage]:
+        """Converts raw dictionary history to LangChain BaseMessage objects.
+
+        Args:
+            history (List[Dict[str, str]]): List of messages with 'role' and 'content'.
+
+        Returns:
+            List[BaseMessage]: List of HumanMessage, AIMessage, and SystemMessage objects.
+        """
+        messages = []
+        for turn in history:
+            role = turn.get("role")
+            content = turn.get("content", "")
+            if role == "user":
+                messages.append(HumanMessage(content=content))
+            elif role in ("assistant", "aries"):
+                messages.append(AIMessage(content=content))
+            elif role == "system":
+                messages.append(SystemMessage(content=content))
+        return messages
 
     async def generate_response(
         self,
         text: str,
         system_prompt: str,
-        history: Optional[List[Dict]] = None,
+        history: list[dict[str, str]] | None = None,
         provider: str = "groq",
-        model: str = "llama-3.1-8b-instant",
+        model: str | None = None,
     ) -> str:
+        """Generates a complete text response from the selected LLM provider.
+
+        Args:
+            text (str): The user's input sequence or query.
+            system_prompt (str): The persona or behavioral guidance for the LLM.
+            history (Optional[List[Dict[str, str]]]): Previous turns of the conversation.
+            provider (str): The inference provider ('groq' or 'ollama'). Defaults to 'groq'.
+            model (Optional[str]): Override for the model name. Defaults to settings.BRAIN_MODEL.
+
+        Returns:
+            str: The generated text response.
         """
-        Generates a text response using the specified provider.
-        """
-        logger.info(f"BRAIN: Active Provider={provider}, Model={model}")
-        if provider == "groq":
-            return await self._groq_inference(text, system_prompt, history, model)
-        elif provider == "ollama":
-            return await self._ollama_inference(text, system_prompt, history, model)
-        else:
-            raise ValueError(f"Unknown brain provider: {provider}")
+        model = model or settings.BRAIN_MODEL
+        logger.info(f"BRAIN: Generating single response via {provider}/{model}")
+
+        messages = [SystemMessage(content=system_prompt)]
+        if history:
+            messages.extend(self._convert_history(history))
+        messages.append(HumanMessage(content=text))
+
+        try:
+            if provider == "groq":
+                response = await self.groq_llm.ainvoke(messages)
+                return response.content
+            else:
+                return await self._ollama_inference(text, system_prompt, history, model)
+        except Exception as e:
+            logger.error(f"BRAIN_ERROR: Inference failed during single generation: {e}")
+            return (
+                "I'm having trouble thinking clearly at the moment. Please try again."
+            )
 
     async def generate_response_stream(
         self,
         text: str,
         system_prompt: str,
-        history: Optional[List[Dict]] = None,
+        history: list[dict[str, str]] | None = None,
         provider: str = "groq",
-        model: str = "llama-3.1-8b-instant",
-    ):
+        model: str | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """Generates a streaming text response for lower perceived latency.
+
+        Args:
+            text (str): The user's input sequence or query.
+            system_prompt (str): The persona or behavioral guidance for the LLM.
+            history (Optional[List[Dict[str, str]]]): Previous turns of the conversation.
+            provider (str): The inference provider ('groq' or 'ollama'). Defaults to 'groq'.
+            model (Optional[str]): Override for the model name. Defaults to settings.BRAIN_MODEL.
+
+        Yields:
+            str: Incremental text chunks from the LLM.
         """
-        Generates a streaming text response using the specified provider.
-        """
-        if provider == "groq":
-            async for chunk in self._groq_inference_stream(
-                text, system_prompt, history, model
-            ):
-                yield chunk
-        elif provider == "ollama":
-            async for chunk in self._ollama_inference_stream(
-                text, system_prompt, history, model
-            ):
-                yield chunk
-        else:
-            raise ValueError(f"Unknown brain provider: {provider}")
+        model = model or settings.BRAIN_MODEL
 
-    async def _groq_inference_stream(
-        self, text: str, system_prompt: str, history: Optional[List[Dict]], model: str
-    ):
+        messages = [SystemMessage(content=system_prompt)]
+        if history:
+            messages.extend(self._convert_history(history))
+        messages.append(HumanMessage(content=text))
+
         try:
-            messages = [{"role": "system", "content": system_prompt}]
-            if history:
-                messages.extend(history)
-            messages.append({"role": "user", "content": text})
-
-            logger.info(f"GROQ: Starting stream for model {model}...")
-            stream = await self.groq_client.chat.completions.create(
-                messages=messages,
-                model=model,
-                stream=True,
-            )
-            logger.info("GROQ: Stream created successfully. Waiting for chunks...")
-            async for chunk in stream:
-                if chunk.choices[0].delta.content is not None:
-                    content = chunk.choices[0].delta.content
-                    logger.debug(f"GROQ Chunk: '{content}'")
-                    yield content
-            logger.info("GROQ: Stream completed.")
+            if provider == "groq":
+                async for chunk in self.groq_llm.astream(messages):
+                    if chunk.content:
+                        yield chunk.content
+            else:
+                async for chunk in self._ollama_inference_stream(
+                    text, system_prompt, history, model
+                ):
+                    yield chunk
         except Exception as e:
-            logger.error(f"Groq Streaming Inference Failed: {str(e)}")
-            yield "I'm having trouble streaming through Groq."
-
-    async def _ollama_inference_stream(
-        self,
-        text: str,
-        system_prompt: str,
-        history: Optional[List[Dict]],
-        model: str = "qwen3.5:9b",
-    ):
-        try:
-            messages = [{"role": "system", "content": system_prompt}]
-            if history:
-                messages.extend(history)
-            messages.append({"role": "user", "content": text})
-
-            async with httpx.AsyncClient() as client:
-                async with client.stream(
-                    "POST",
-                    "http://localhost:11434/api/chat",
-                    json={
-                        "model": model,
-                        "messages": messages,
-                        "stream": True,
-                    },
-                    timeout=60.0,
-                ) as response:
-                    async for line in response.aiter_lines():
-                        if not line:
-                            continue
-                        data = json.loads(line)
-                        if "message" in data and "content" in data["message"]:
-                            yield data["message"]["content"]
-                        if data.get("done"):
-                            break
-        except Exception as e:
-            logger.error(f"Ollama Streaming Error: {e}")
-            yield "My local streaming brain is offline."
-
-    async def _groq_inference(
-        self, text: str, system_prompt: str, history: Optional[List[Dict]], model: str
-    ) -> str:
-        try:
-            messages = [{"role": "system", "content": system_prompt}]
-            if history:
-                messages.extend(history)
-            messages.append({"role": "user", "content": text})
-
-            logger.info(
-                f"GROQ: Requesting completion for model {model} (timeout=15s)..."
-            )
-            # Log first message content (system prompt) for health check but truncated
-            logger.debug(f"GROQ: System Prompt (truncated): {system_prompt[:200]}...")
-
-            completion = await self.groq_client.chat.completions.create(
-                messages=messages,
-                model=model,
-                timeout=15.0,
-            )
-            content = completion.choices[0].message.content
-            logger.info(f"GROQ: Received response ({len(content)} chars).")
-            return content
-        except Exception as e:
-            logger.error(f"GROQ: Inference Failed: {str(e)}")
-            # Log the full messages list only on error to avoid log bloat
-            logger.error(f"GROQ: Failed Messages Payload: {messages}")
-            return "I'm having trouble thinking through Groq right now."
+            logger.error(f"BRAIN_ERROR: Inference failed during streaming: {e}")
+            yield "I ran into a bit of a snag while thinking. Let me try again."
 
     async def get_embedding(
         self, text: str, model: str = "nomic-embed-text:latest"
-    ) -> List[float]:
-        """
-        Generates a vector embedding using local Ollama.
-        Falls back to a zero-vector on failure to prevent pipeline snags.
+    ) -> list[float]:
+        """Generates high-dimensional vector embeddings via local Ollama.
+
+        Args:
+            text (str): The input text to vectorize.
+            model (str): The embedding model name. Defaults to 'nomic-embed-text:latest'.
+
+        Returns:
+            List[float]: A list of floats representing the text in vector space.
+                Returns a zero-vector on failure.
         """
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.post(
-                    "http://localhost:11434/api/embeddings",
+                    f"{self.ollama_base_url}/embeddings",
                     json={"model": model, "prompt": text},
-                    timeout=1.0,  # Shorter timeout for faster fallback
+                    timeout=5.0,
                 )
                 resp.raise_for_status()
-                data = resp.json()
-                return data["embedding"]
+                return resp.json()["embedding"]
         except Exception as e:
             logger.warning(
-                f"Ollama Embedding Offline (using zero-vector fallback): {e}"
+                f"BRAIN_EMBEDDING: Local embedding offline, returning zero-vector: {e}"
             )
-            # Return a standard Nomic-sized zero vector to keep the DB logic happy
             return [0.0] * 768
 
     async def _ollama_inference(
-        self,
-        text: str,
-        system_prompt: str,
-        history: Optional[List[Dict]],
-        model: str = "qwen3.5:9b",
+        self, text: str, system_prompt: str, history: list[dict] | None, model: str
     ) -> str:
-        try:
-            messages = [{"role": "system", "content": system_prompt}]
-            if history:
-                messages.extend(history)
-            messages.append({"role": "user", "content": text})
+        """Performs raw HTTP inference against a local Ollama server."""
+        messages = [{"role": "system", "content": system_prompt}]
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": text})
 
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    "http://localhost:11434/api/chat",
-                    json={
-                        "model": model,
-                        "messages": messages,
-                        "stream": False,
-                    },
-                    timeout=60.0,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                return data["message"]["content"]
-        except Exception as e:
-            logger.error(f"Ollama Error: {e}")
-            return "My local brain is currently offline."
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{self.ollama_base_url}/chat",
+                json={"model": model, "messages": messages, "stream": False},
+                timeout=30.0,
+            )
+            return resp.json()["message"]["content"]
+
+    async def _ollama_inference_stream(
+        self, text: str, system_prompt: str, history: list[dict] | None, model: str
+    ) -> AsyncGenerator[str, None]:
+        """Performs raw streaming HTTP inference against a local Ollama server."""
+        messages = [{"role": "system", "content": system_prompt}]
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": text})
+
+        async with httpx.AsyncClient() as client:
+            async with client.stream(
+                "POST",
+                f"{self.ollama_base_url}/chat",
+                json={"model": model, "messages": messages, "stream": True},
+            ) as response:
+                async for line in response.aiter_lines():
+                    if line:
+                        data = json.loads(line)
+                        if "message" in data:
+                            yield data["message"]["content"]
 
 
+# Global instance of the BrainAdapter for use across the Aries service.
 brain_adapter = BrainAdapter()

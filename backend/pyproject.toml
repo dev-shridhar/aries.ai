@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "DSA Agent Backend"
 readme = "README.md"
 requires-python = ">=3.10"
+
 dependencies = [
     "fastapi>=0.109.0",
     "uvicorn[standard]>=0.33.0",
@@ -12,13 +13,83 @@ dependencies = [
     "mcp>=1.26.0",
     "httpx>=0.27.0",
     "aiosqlite>=0.20.0",
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
     "redis>=7.3.0",
     "motor>=3.7.1",
     "deepgram-sdk>=6.0.1",
     "pydantic-settings>=2.13.1",
+    "langchain>=1.2.12",
+    "langchain-core>=1.2.19",
+    "langchain-community>=0.4.1",
+    "langchain-huggingface>=1.2.1",
+    "langchain-ollama>=1.0.1",
+    "langchain-groq>=1.1.2",
+    "langchain-openai>=1.1.11",
+    "langchain-chroma>=1.1.0",
+    "langgraph>=1.1.2",
+    "chromadb>=1.5.5",
+]
+
+# -------------------------
+# DEV DEPENDENCIES
+# -------------------------
+
+[dependency-groups]
+dev = [
+    "black>=26.3.1",
+    "ruff>=0.15.6",
+    "isort>=8.0.1",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=7.0.0",
 ]
 
 [tool.uv]
 managed = true
+
+# -------------------------
+# BLACK CONFIG
+# -------------------------
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+skip-string-normalization = false
+
+# -------------------------
+# RUFF CONFIG
+# -------------------------
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # pyflakes
+    "I",   # import issues
+    "UP",  # python upgrades
+]
+
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+
+# -------------------------
+# ISORT CONFIG
+# -------------------------
+
+[tool.isort]
+profile = "black"
+line_length = 88
+multi_line_output = 3
+include_trailing_comma = true
+
+# -------------------------
+# PYTEST CONFIG
+# -------------------------
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

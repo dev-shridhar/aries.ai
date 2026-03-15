@@ -1,3 +1,10 @@
+"""Domain service for secure Python code execution and test-case orchestration.
+
+This module provides the high-level logic for evaluating user solutions
+against Data Structures and Algorithms (DSA) problems. It generates
+driver scripts to handle complex objects and provides structured results.
+"""
+
 import json
 import re
 from typing import Any
@@ -6,11 +13,19 @@ from app.infrastructure.compiler.executor import compiler_infra
 
 
 class CompilerService:
-    """Service to safely sandbox and execute Python code."""
+    """Orchestrates the evaluation of Python code against test suites."""
 
     @staticmethod
     async def run_python(code: str, stdin: str = "") -> dict[str, Any]:
-        """Safely executes raw Python code in a sandboxed environment."""
+        """Safely executes raw Python code in a sandboxed environment.
+
+        Args:
+            code (str): The raw Python code to execute.
+            stdin (str, optional): Standard input for the script.
+
+        Returns:
+            Dict[str, Any]: Execution results including stdout, stderr, and exit_code.
+        """
         return await compiler_infra.run_raw_python(code, stdin)
 
     @staticmethod
@@ -20,8 +35,19 @@ class CompilerService:
         expected_outputs: list[str],
         public_cases_count: int,
         order_independent: bool = False,
-    ) -> tuple[list[dict], str]:
-        """Run user code against multiple example test cases using a driver script."""
+    ) -> tuple[list[dict[str, Any]], str]:
+        """Runs user code against multiple test cases using a driver script.
+
+        Args:
+            code (str): The user's Python solution code.
+            raw_examples (str): Newline-separated JSON strings representing inputs.
+            expected_outputs (List[str]): List of expected result serializations.
+            public_cases_count (int): How many cases are shown to the user initially.
+            order_independent (bool): If True, compares lists by sorting them first.
+
+        Returns:
+            Tuple[List[Dict[str, Any]], str]: (Structured test results, stderr).
+        """
         expected_outputs_json = json.dumps(expected_outputs)
         examples_json = json.dumps(raw_examples)
 
@@ -60,8 +86,6 @@ def run_all_tests(raw_examples, expected_outputs):
         if n_args == 0: n_args = 1 
 
         lines = [l for l in raw_examples.split("\n") if l.strip()]
-        while lines and not lines[0].strip(): lines.pop(0)
-        while lines and not lines[-1].strip(): lines.pop()
         
         if not lines:
             print(json.dumps([]))
@@ -84,29 +108,23 @@ def run_all_tests(raw_examples, expected_outputs):
                 if expected is not None:
                     if isinstance(expected, str):
                         expected_str = expected.strip()
-                        if not expected_str:
-                            expected_serialization = None
-                        else:
-                            try:
-                                parsed_expected = json.loads(expected_str)
-                            except json.JSONDecodeError:
-                                parsed_expected = expected_str
+                        try:
+                            parsed_expected = json.loads(expected_str)
+                        except json.JSONDecodeError:
+                            parsed_expected = expected_str
                     else:
                         parsed_expected = expected
                     
-                    if expected_serialization is not None or (isinstance(expected, str) and expected.strip()) or not isinstance(expected, str):
-                        if isinstance(parsed_expected, str):
-                            passed = str(result_val).strip() == parsed_expected.strip()
-                        else:
-                            passed = json.dumps(result_val, sort_keys=True) == json.dumps(parsed_expected, sort_keys=True)
-                            if __ORDER_INDEPENDENT__ and not passed and isinstance(result_val, list) and isinstance(parsed_expected, list):
-                                try:
-                                    passed = sorted(result_val) == sorted(parsed_expected)
-                                try:
-                                    passed = sorted(result_val) == sorted(parsed_expected)
-                                except Exception:
-                                    pass
-                        expected_serialization = serialize(parsed_expected)
+                    if isinstance(parsed_expected, str):
+                        passed = str(result_val).strip() == parsed_expected.strip()
+                    else:
+                        passed = json.dumps(result_val, sort_keys=True) == json.dumps(parsed_expected, sort_keys=True)
+                        if __ORDER_INDEPENDENT__ and not passed and isinstance(result_val, list) and isinstance(parsed_expected, list):
+                            try:
+                                passed = sorted(result_val) == sorted(parsed_expected)
+                            except Exception:
+                                pass
+                    expected_serialization = serialize(parsed_expected)
                 
                 results.append({
                     "input": "\n".join(input_lines),
@@ -125,12 +143,10 @@ def run_all_tests(raw_examples, expected_outputs):
         
         print(json.dumps(results))
     except Exception as e:
-        print(json.dumps([{"error": "Driver error: " + str(e)}]))
+        print(json.dumps([{"error": "DRIVER_FATAL: " + str(e)}]))
 
 if __name__ == "__main__":
-    raw = __EXAMPLES_JSON__
-    expected = __EXPECTED_JSON__
-    run_all_tests(raw, expected)
+    run_all_tests(__EXAMPLES_JSON__, __EXPECTED_JSON__)
 """
         driver = driver_template.replace("__USER_CODE__", code)
         driver = driver.replace("__EXAMPLES_JSON__", examples_json)
@@ -145,21 +161,18 @@ if __name__ == "__main__":
 
             try:
                 results = json.loads(out_str) if out_str else []
-                results = [dict(r) | {"verified": False} for r in results]
-                return results, err_str
+                return [dict(r) | {"verified": False} for r in results], err_str
             except json.JSONDecodeError:
                 match = re.search(r"\[.*\]", out_str, re.DOTALL)
                 if match:
                     results = json.loads(match.group(0))
-                    results = [dict(r) | {"verified": False} for r in results]
-                    return results, err_str
+                    return [dict(r) | {"verified": False} for r in results], err_str
                 return [
                     {
-                        "input": "All",
-                        "error": "Execution failed to return valid JSON. Output: "
-                        + out_str,
+                        "input": "SYSTEM",
+                        "error": "Failed to parse execution output as structured JSON.",
                         "verified": False,
                     }
                 ], err_str
         except Exception as e:
-            raise Exception(f"run_examples failed: {str(e)}")
+            raise Exception(f"SERVICE: run_examples failed: {str(e)}")

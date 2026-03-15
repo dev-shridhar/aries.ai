@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -8,20 +8,20 @@ class TTSRequest(BaseModel):
 
 
 class VoiceRequest(BaseModel):
-    session_id: Optional[str] = "default-session"
-    username: Optional[str] = "anonymous"
-    audio_chunk: Optional[str] = None  # Base64 encoded audio
-    code_context: Optional[str] = None
-    skill_id: Optional[str] = "aries-default"
+    session_id: str | None = "default-session"
+    username: str | None = "anonymous"
+    audio_chunk: str | None = None  # Base64 encoded audio
+    code_context: str | None = None
+    skill_id: str | None = "aries-default"
 
 
 class VoiceResponse(BaseModel):
     text: str
-    audio_chunk: Optional[str] = None
-    action: Optional[str] = None
-    action_payload: Optional[Any] = None
-    is_final: Optional[bool] = None
-    speech_final: Optional[bool] = None
+    audio_chunk: str | None = None
+    action: str | None = None
+    action_payload: Any | None = None
+    is_final: bool | None = None
+    speech_final: bool | None = None
 
 
 class SkillDefinition(BaseModel):
@@ -29,5 +29,5 @@ class SkillDefinition(BaseModel):
     id: str
     persona: str
     prompt_extension: str
-    triggers: List[str]
-    supported_actions: List[str]
+    triggers: list[str]
+    supported_actions: list[str]

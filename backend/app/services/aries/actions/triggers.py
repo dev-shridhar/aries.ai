@@ -1,9 +1,9 @@
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class ActionTrigger:
     @staticmethod
-    def parse_action(llm_response: str) -> Optional[Dict[str, Any]]:
+    def parse_action(llm_response: str) -> dict[str, Any] | None:
         """
         Detects if the LLM response contains a structured action trigger.
         Example: [LOAD_PROBLEM: reverse-linked-list]
@@ -11,8 +11,8 @@ class ActionTrigger:
         import re
 
         # Regex for [ACTION: optional_payload]
-        # Allowing optional space before colon and after
-        pattern = r"\[([A-Z_]+)\s*(?::\s*([^\]]+))?\]"
+        # Allowing optional space after [ and before ]
+        pattern = r"\[\s*([A-Z_]+)\s*(?::\s*([^\]]+?))?\s*\]"
         match = re.search(pattern, llm_response, re.IGNORECASE)
 
         if match:

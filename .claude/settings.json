@@ -1,0 +1,9 @@
+{
+    "project_name": "aries-ai",
+    "version": "1.0.0",
+    "ai_context_mode": "strict",
+    "preferred_models": {
+        "chat": "llama-3.3-70b-versatile",
+        "embedding": "nomic-embed-text"
+    }
+}

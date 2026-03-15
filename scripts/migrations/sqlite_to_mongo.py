@@ -1,8 +1,9 @@
 import asyncio
+import logging
+from pathlib import Path
+
 import aiosqlite
 from motor.motor_asyncio import AsyncIOMotorClient
-from pathlib import Path
-import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
