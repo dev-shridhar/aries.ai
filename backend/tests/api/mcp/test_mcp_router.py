@@ -5,8 +5,9 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from app.main import app
 from httpx import ASGITransport, AsyncClient
+
+from app.main import app
 
 
 @asynccontextmanager

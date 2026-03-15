@@ -9,6 +9,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from app.infrastructure.aries.redis_client import AriesRedisClient
 
 

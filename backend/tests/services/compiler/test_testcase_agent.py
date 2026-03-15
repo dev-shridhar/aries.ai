@@ -8,6 +8,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from app.core.config import settings
 from app.services.compiler.testcase_agent import generate_hidden_testcases
 

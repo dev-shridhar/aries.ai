@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { python } from '@codemirror/lang-python'
 import { vscodeDark } from '@uiw/codemirror-theme-vscode'
@@ -25,8 +25,14 @@ function App() {
   const [ariesBubble, setAriesBubble] = useState('')
   const [showAriesBubble, setShowAriesBubble] = useState(false)
   const [toasts, setToasts] = useState([])
-  const [currentSessionId, setCurrentSessionId] = useState('')
-  const [currentUsername, setCurrentUsername] = useState('anonymous')
+  const [currentSessionId, setCurrentSessionId] = useState(() => {
+    const saved = localStorage.getItem('aries_session_id');
+    if (saved) return saved;
+    const newId = crypto.randomUUID();
+    localStorage.setItem('aries_session_id', newId);
+    return newId;
+  })
+  const [currentUsername, setCurrentUsername] = useState(() => localStorage.getItem('aries_username') || 'anonymous')
   const codeEditorRef = useRef(null)
 
   const fetchProblemsList = async (query = '', diff = '') => {
@@ -55,8 +61,10 @@ function App() {
     }
   }, [view])
 
+  const toastIdRef = useRef(0);
+
   const addToast = (message, type = 'info') => {
-    const id = Date.now()
+    const id = ++toastIdRef.current;
     setToasts(prev => [...prev, { id, message, type }])
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id))
@@ -92,7 +100,7 @@ function App() {
 
       const finalQuery = qParams.toString() ? `?${qParams.toString()}` : ''
 
-      if (slug === 'daily-challenge') {
+      if (slug === 'daily-challenge' || slug === 'daily') {
         const dailyRes = await fetch('/api/daily' + finalQuery)
         if (dailyRes.ok) {
           const dailyData = await dailyRes.json()
@@ -111,7 +119,23 @@ function App() {
       setCurrentProblem(p)
       setCode(p.pythonStub || '# Write your solution\nclass Solution:\n    def solve(self):\n        pass')
       setView('solve')
-      explainProblemToAgent(p, slug)
+      
+      // Notify backend about loaded problem so agent can see it
+      try {
+        await fetch('/api/aries/problem-state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: currentSessionId,
+            username: currentUsername,
+            problem_slug: targetSlug,
+            problem_title: p.title,
+            problem_difficulty: p.difficulty,
+          }),
+        })
+      } catch (e) {
+        console.warn('Failed to sync problem state with agent:', e)
+      }
     } catch {
       setCurrentProblem({ error: 'Failed to load problem' })
     }
@@ -134,7 +158,7 @@ function App() {
     }
   }
 
-  const handleAriesAction = (action, payload) => {
+  const handleAriesAction = useCallback((action, payload) => {
     console.log('Aries Action:', action, payload);
     if (action === 'LOAD_PROBLEM' && payload?.slug) {
       loadProblem(payload.slug);
@@ -161,7 +185,7 @@ function App() {
     } else if (action === 'RECORD_FACT') {
       addToast(`Aries learned: ${payload.concept}`, 'success');
     }
-  }
+  }, [currentSessionId, currentUsername]);
 
 
 
@@ -493,7 +517,7 @@ function App() {
               </div>
               <nav className="header-nav">
                 <button className={`nav-btn ${view === 'problems' ? 'active' : ''}`} onClick={() => setView('problems')}>Problems</button>
-                <button className={`nav-btn ${view === 'solve' ? 'active' : ''}`} onClick={() => { if (currentProblem) setView('solve'); else loadProblem('daily-challenge'); }}>Solve</button>
+                <button className={`nav-btn ${view === 'solve' ? 'active' : ''}`} onClick={() => setView('solve')}>Solve</button>
               </nav>
             </div>
             <div className="nav-right">
@@ -600,9 +624,15 @@ function App() {
                     <div className="problem-content" dangerouslySetInnerHTML={{ __html: currentProblem.content || '' }} />
                   </div>
                 ) : (
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                    Enter a problem slug in the header (e.g. two-sum) and click Go, or ask the agent to open one.
-                  </p>
+                  <div style={{ color: 'var(--text-muted)', padding: '2rem', textAlign: 'center' }}>
+                    <p>Select a problem from the Problems page to start solving.</p>
+                    <button 
+                      onClick={() => loadProblem('daily-challenge')} 
+                      style={{ marginTop: '1rem', padding: '0.5rem 1rem', cursor: 'pointer', background: 'var(--accent-primary)', color: '#fff', border: 'none', borderRadius: '4px' }}
+                    >
+                      Try Today's Challenge
+                    </button>
+                  </div>
                 )}
               </div>
             </div>

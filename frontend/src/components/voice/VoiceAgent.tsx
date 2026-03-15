@@ -27,13 +27,22 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
     }, [onSessionInit]);
 
     const handleAudioChunk = useCallback((chunk: string) => {
+        console.log("Aries: Received audio chunk, length:", chunk.length);
         audioQueueRef.current.push(chunk);
         if (!isPlayingRef.current) {
+            console.log("Aries: Not currently playing, starting queue processing");
             processAudioQueue();
+        } else {
+            console.log("Aries: Already playing, chunk queued");
         }
     }, []);
 
-    const { isConnected, lastResponse, partialTranscript, sendVoiceChunk, sendVoiceRequest, sessionId, username, aiResponse, setAiResponse } = useVoiceSocket(
+    const onActionRef = useRef(onAction);
+    useEffect(() => {
+        onActionRef.current = onAction;
+    }, [onAction]);
+
+    const { isConnected, lastResponse, partialTranscript, sendVoiceChunk, sendVoiceRequest, sessionId, username, aiResponse, setAiResponse, socket } = useVoiceSocket(
         'ws://localhost:8000/api/aries/ws',
         handleAudioChunk
     );
@@ -73,18 +82,25 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
 
     // Handle Voice Responses (Actions only now)
     useEffect(() => {
-        if (lastResponse) {
+        if (lastResponse && isActiveRef.current) {
             // If we got ANY response from the backend, we definitely aren't "thinking" about the previous turn anymore
             setIsThinking(false);
+
+            // If this was a WELCOME response (has audio or text), start listening after audio plays
+            if ((lastResponse.text || lastResponse.audio_chunk) && !lastResponse.action) {
+                console.log("Aries: Welcome/response received, will start listening after audio...");
+                // Audio will trigger processAudioQueue which calls startRecording when done
+                return;
+            }
 
             if (lastResponse.action === "SENSORY: WAKE") {
                 console.log("WAKE WORD DETECTED: Glow active!");
                 setIsThinking(true); 
-            } else if (lastResponse.action && onAction) {
-                onAction(lastResponse.action, lastResponse.action_payload);
+            } else if (lastResponse.action && onActionRef.current) {
+                onActionRef.current(lastResponse.action, lastResponse.action_payload);
             }
         }
-    }, [lastResponse, onAction]);
+    }, [lastResponse]);
 
     const base64ToBlob = (base64: string, type = 'audio/wav') => {
         const binStr = atob(base64);
@@ -98,14 +114,24 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
 
     const processAudioQueue = () => {
         const base64Audio = audioQueueRef.current.shift();
+        console.log("Aries: processAudioQueue called, audio in queue:", base64Audio ? "yes" : "no");
         if (!base64Audio) {
             console.log("Aries: Audio queue empty, ending playback flow.");
+            console.log("Aries: isActiveRef.current =", isActiveRef.current);
             isPlayingRef.current = false;
             setIsSpeaking(false);
-            // If we are active (not clicked to stop), go back to listening
+            // If we are active (not clicked to stop), wait a moment then go back to listening
             if (isActiveRef.current) {
-                console.log("Aries: Response complete, starting recording phase...");
-                startRecording();
+                console.log("Aries: Response complete, waiting before recording...");
+                // Wait 1.5 seconds before listening again to avoid echo/confusion
+                setTimeout(() => {
+                    if (isActiveRef.current) {
+                        console.log("Aries: Starting recording phase after delay...");
+                        startRecording();
+                    }
+                }, 1500);
+            } else {
+                console.log("Aries: Not starting recording - session was stopped");
             }
             return;
         }
@@ -157,8 +183,17 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
         }
     };
 
+    const isRecordingInProgressRef = useRef(false);
+
     const startRecording = async () => {
+        // Prevent multiple concurrent recordings
+        if (isRecordingInProgressRef.current) {
+            console.log("Aries: Recording already in progress, skipping start...");
+            return;
+        }
+        
         console.log("Aries: Entering startRecording...");
+        isRecordingInProgressRef.current = true;
         setAiResponse(""); // Clear previous Aries response
         audioQueueRef.current = []; // Clear stale audio
         setIsListening(true); // Show Cyan immediately
@@ -185,11 +220,13 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
             };
 
             mediaRecorder.onstop = () => {
+                console.log("Aries: MediaRecorder stopped, isConnected:", isConnected);
                 setIsListening(false);
                 // Only show thinking if we are still active (not clicked to stop)
                 if (isActiveRef.current) {
                     setIsThinking(true);
                     // Explicitly tell backend to process the accumulated buffer
+                    console.log("Aries: Sending PROCESS_AUDIO event");
                     sendVoiceRequest({ event: "PROCESS_AUDIO" } as any);
                 }
             };
@@ -211,8 +248,8 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
             const dataArray = new Uint8Array(bufferLength);
             let silenceStart = Date.now();
             let hasSpoken = false; // Prevent immediate timeout before speech starts
-            const SILENCE_THRESHOLD = 0.015; // Slightly more robust threshold
-            const SILENCE_DURATION = 800; // 0.8 seconds
+            const SILENCE_THRESHOLD = 0.015; // Lower threshold to catch speech
+            const SILENCE_DURATION = 1500; // 1.5 seconds - more time to speak
 
             console.log("Aries: VAD loop starting...");
             
@@ -221,7 +258,8 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
                 await audioContext.resume();
             }
 
-            const VAD_WARMUP = 1000; // Wait 1s before allowing silence detection
+            const VAD_WARMUP = 500; // Wait 0.5s before allowing silence detection
+            
             const startTime = Date.now();
 
             const checkVolume = () => {
@@ -239,6 +277,9 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
                 const rms = Math.sqrt(sumSquares / bufferLength);
 
                 const isWarmedUp = Date.now() - startTime > VAD_WARMUP;
+                const silenceDuration = Date.now() - silenceStart;
+
+                console.log(`VAD: rms=${rms.toFixed(4)}, hasSpoken=${hasSpoken}, isWarmedUp=${isWarmedUp}, silenceDuration=${silenceDuration}ms`);
 
                 if (rms > SILENCE_THRESHOLD) {
                     silenceStart = Date.now();
@@ -246,8 +287,8 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
                         console.log("Aries VAD: Speech detected, silence monitoring engaged.");
                         hasSpoken = true;
                     }
-                } else if (hasSpoken && isWarmedUp && Date.now() - silenceStart > SILENCE_DURATION) {
-                    console.log(`Aries: VAD detected silence (${rms.toFixed(4)}), stopping turn...`);
+                } else if (hasSpoken && isWarmedUp && silenceDuration > SILENCE_DURATION) {
+                    console.log(`Aries: VAD detected silence (rms=${rms.toFixed(4)}, duration=${silenceDuration}ms), stopping turn...`);
                     stopRecording();
                     return; 
                 }
@@ -271,11 +312,17 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
     };
 
     const stopRecording = () => {
-        console.log("Aries: stopRecording called");
+        console.log("Aries: stopRecording called - sending PROCESS_AUDIO event");
+        console.log("Aries: mediaRecorder state:", mediaRecorderRef.current?.state);
+        
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
             mediaRecorderRef.current.requestData(); // Force emission of buffered audio
             mediaRecorderRef.current.stop();
         }
+        
+        // Send PROCESS_AUDIO event
+        sendVoiceRequest({ event: "PROCESS_AUDIO" });
+        
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(track => track.stop());
             streamRef.current = null;
@@ -284,6 +331,9 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
             audioContextRef.current.close();
             audioContextRef.current = null;
         }
+        
+        // Allow new recordings
+        isRecordingInProgressRef.current = false;
     };
 
     const toggleVoiceSession = () => {

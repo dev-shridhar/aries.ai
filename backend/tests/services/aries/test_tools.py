@@ -8,6 +8,7 @@ semantic search, with coverage for both success and error paths.
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
 from app.services.aries.pipeline.tools import AriesTools
 
 

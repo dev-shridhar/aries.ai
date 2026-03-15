@@ -3,6 +3,7 @@ import logging
 from typing import Any
 
 import redis.asyncio as redis
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)

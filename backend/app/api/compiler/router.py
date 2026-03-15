@@ -9,14 +9,19 @@ import json
 import logging
 import re
 
-from app.core.compiler.models import (RunExamplesRequest, RunExamplesResponse,
-                                      RunPythonRequest, RunPythonResponse)
+from fastapi import APIRouter, HTTPException
+
+from app.core.compiler.models import (
+    RunExamplesRequest,
+    RunExamplesResponse,
+    RunPythonRequest,
+    RunPythonResponse,
+)
 from app.core.mcp.models import SubmitRequest
 from app.services.aries.memory import memory_service
 from app.services.compiler.service import CompilerService
 from app.services.compiler.testcase_agent import generate_hidden_testcases
 from app.services.mcp.service import MCPService
-from fastapi import APIRouter, HTTPException
 
 logger = logging.getLogger(__name__)
 

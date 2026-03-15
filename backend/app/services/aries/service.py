@@ -100,8 +100,9 @@ class AriesService:
                 "Never guess about the user's state or code."
             )
 
-            from app.services.aries.pipeline.graph import get_aries_graph
             from langchain_core.messages import HumanMessage
+
+            from app.services.aries.pipeline.graph import get_aries_graph
 
             aries_graph = await get_aries_graph()
             graph_start = time.time()
@@ -195,7 +196,7 @@ class AriesService:
         username: str = "anonymous",
         skill_id: str = "aries-default",
     ) -> AsyncGenerator[VoiceResponse, None]:
-        """Generates a proactive, contextual welcome message for the user.
+        """Generates a proactive, contextual welcome message for the user using LLM.
 
         Args:
             session_id (str): The unique identifier for the user session.
@@ -206,59 +207,44 @@ class AriesService:
             VoiceResponse: Incremental updates for streaming text-and-audio welcome.
         """
         try:
-            # Check the current problem state in Redis to customize the greeting.
-            problem = await aries_redis.get_current_problem(session_id)
+            # Get the skill's system prompt
+            system_prompt = self.skill_manager.get_system_prompt(skill_id, "")
+            system_prompt += "\n\nCRITICAL: Give a warm greeting. Ask what problem they'd like to solve or what topic they want to practice. Keep it short - max 1-2 sentences. End with a question."
 
+            # Get current problem context from Redis
+            problem = await aries_redis.get_current_problem(session_id)
+            context_msg = ""
             if problem:
                 title = problem.get("title", "this problem")
-                welcome_prompt = (
-                    f"You are Aries. The user is currently looking at '{title}'. "
-                    "Briefly greet them (15 words max) and ask if they need help with the logic."
-                )
-            else:
-                welcome_prompt = (
-                    "You are Aries. The user hasn't loaded a problem yet. "
-                    "Briefly greet them (15 words max) and suggest starting with a simple challenge."
-                )
+                context_msg = f" The user is working on {title}."
 
-            logger.info(f"SERVICE: Generating welcome for session {session_id}")
+            # Call LLM directly for quick welcome (bypass full graph)
+            response = await self.brain.generate_response(
+                text=f"Welcome the user briefly.{context_msg}",
+                system_prompt=system_prompt,
+                provider="groq",
+            )
+            ai_text = (
+                response.strip() if isinstance(response, str) else str(response).strip()
+            )
 
-            full_text = ""
-            sentence_buffer = ""
+            logger.info(f"SERVICE: LLM generated welcome: {ai_text[:50]}...")
 
-            # Use the brain adapter directly for streaming welcome (no tool calling needed here).
-            async for chunk in self.brain.generate_response_stream(
-                "System: Introduce yourself to the user.",
-                welcome_prompt,
-                history=[],
-            ):
-                full_text += chunk
-                sentence_buffer += chunk
-
-                yield VoiceResponse(text=chunk)
-
-                # Stream audio by sentence boundaries to reduce time-to-first-sound.
-                if (
-                    any(p in chunk for p in (".", "?", "!"))
-                    and len(sentence_buffer) > 15
-                ):
-                    audio_bytes = await self.tts.speak(sentence_buffer.strip())
-                    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-                    yield VoiceResponse(text="", audio_chunk=audio_b64)
-                    sentence_buffer = ""
-
-            # Flush the remaining buffer
-            if sentence_buffer.strip():
-                audio_bytes = await self.tts.speak(sentence_buffer.strip())
+            # Generate TTS audio
+            try:
+                audio_bytes = await self.tts.speak(ai_text)
                 audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
                 yield VoiceResponse(text="", audio_chunk=audio_b64)
+                logger.info(f"SERVICE: TTS audio sent ({len(audio_bytes)} bytes)")
+            except Exception as e:
+                logger.error(f"SERVICE_ERROR: TTS generation failed: {e}")
 
-            # Record the greeting in memory so Aries knows it already said 'hello'.
+            # Record the greeting
             await memory_service.record_interaction(
                 session_id=session_id,
                 username=username,
                 user_msg="[SYSTEM_EVENT: WELCOME]",
-                ai_msg=full_text,
+                ai_msg=ai_text,
                 skill_id=skill_id,
             )
 

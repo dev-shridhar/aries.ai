@@ -9,8 +9,9 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from app.services.aries.pipeline.brain import BrainAdapter
 from langchain_core.messages import AIMessage
+
+from app.services.aries.pipeline.brain import BrainAdapter
 
 
 @pytest.fixture

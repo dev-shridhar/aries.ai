@@ -3,9 +3,10 @@ import os
 from typing import Any
 
 import chromadb
-from app.core.config import settings
 from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class ChromaManager:
         """Initializes the ChromaManager with local persistence and embeddings.
 
         Args:
-            persist_directory (str): Path to the storage directory. Defaults to 'chroma_db'.
+            persist_directory (str): Path to storage directory. Defaults to 'chroma_db'.
         """
         self.persist_directory = persist_directory
         # Ensure the persistence directory exists on the filesystem.
@@ -85,9 +86,9 @@ class ChromaManager:
 
         Args:
             collection_name (str): The collection to search within.
-            query (str): The natural language query or concept string.
-            limit (int): Maximum number of relevant hits to return. Defaults to 3.
-            filter (Optional[Dict[str, Any]]): Metadata filters (e.g., {"username": "shridhar"}).
+            query (str): Natural language query or concept string.
+            limit (int): Max number of relevant hits. Defaults to 3.
+            filter (Optional[Dict[str, Any]]): Metadata filters.
 
         Returns:
             List[Dict[str, Any]]: A list of matching facts with content and metadata.

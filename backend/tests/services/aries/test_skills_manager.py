@@ -9,6 +9,7 @@ import json
 from unittest.mock import mock_open, patch
 
 import pytest
+
 from app.core.aries.models import SkillDefinition
 from app.services.aries.skills.manager import SkillManager
 

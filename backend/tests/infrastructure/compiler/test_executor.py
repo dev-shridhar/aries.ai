@@ -9,6 +9,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
 from app.infrastructure.compiler.executor import compiler_infra
 
 

@@ -4,9 +4,10 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from langchain_core.embeddings import Embeddings
+
 from app.infrastructure.aries.chroma_client import ChromaManager
 from app.services.aries.memory import memory_service
-from langchain_core.embeddings import Embeddings
 
 
 # Fake embeddings class for testing

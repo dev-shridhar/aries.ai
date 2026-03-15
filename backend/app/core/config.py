@@ -26,8 +26,8 @@ class Settings(BaseSettings):
     """
 
     # --- API SECURITY ---
-    DEEPGRAM_API_KEY: str
-    GROQ_API_KEY: str
+    DEEPGRAM_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
 
     # --- INFRASTRUCTURE: PERSISTENCE & CACHE ---
     REDIS_HOST: str = "localhost"
@@ -42,8 +42,14 @@ class Settings(BaseSettings):
 
     # --- AGENTIC CORE (BRAIN) ---
     BRAIN_PROVIDER: str = "groq"
-    BRAIN_MODEL: str = "llama-3.3-70b-versatile"
+    BRAIN_MODEL: str = "moonshotai/kimi-k2-instruct-0905"
     EMBEDDING_MODEL: str = "nomic-embed-text:latest"
+
+    # --- STT CONFIGURATION ---
+    STT_PROVIDER: str = "groq"  # Options: "groq" or "deepgram"
+
+    # --- TTS CONFIGURATION ---
+    TTS_PROVIDER: str = "groq"  # Options: "groq" or "deepgram"
 
     # Pydantic configuration for environment variable loading
     model_config = {

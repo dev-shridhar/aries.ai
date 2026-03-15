@@ -3,12 +3,39 @@ import json
 import logging
 from typing import Any
 
-from app.core.aries.models import VoiceResponse
-from app.services.aries.service import aries_service
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
+
+from app.core.aries.models import VoiceResponse
+from app.infrastructure.aries.redis_client import aries_redis
+from app.services.aries.service import aries_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class ProblemState(BaseModel):
+    session_id: str
+    username: str = "anonymous"
+    problem_slug: str | None = None
+    problem_title: str | None = None
+    problem_difficulty: str | None = None
+
+
+@router.post("/problem-state")
+async def set_problem_state(state: ProblemState):
+    """Stores the current problem state in Redis for the agent to access."""
+    if state.problem_slug:
+        problem_data: dict = {
+            "slug": state.problem_slug,
+            "title": state.problem_title,
+            "difficulty": state.problem_difficulty,
+        }
+        await aries_redis.set_current_problem(state.session_id, problem_data)
+        logger.info(f"ROUTER: Set problem state - {state.problem_slug}")
+    else:
+        logger.info(f"ROUTER: Cleared problem state")
+    return {"status": "ok"}
 
 
 @router.websocket("/ws")
@@ -46,7 +73,12 @@ async def aries_websocket(websocket: WebSocket) -> None:
             message = await websocket.receive()
 
             if message["type"] == "websocket.disconnect":
+                logger.info("ROUTER: WebSocket disconnected")
                 break
+
+            # Log all message types
+            msg_keys = list(message.keys())
+            logger.info(f"ROUTER: Received message type: {msg_keys}")
 
             # CASE 1: JSON METADATA (Configuration or Events)
             if "text" in message:
@@ -69,7 +101,17 @@ async def aries_websocket(websocket: WebSocket) -> None:
                     async for response in aries_service.process_welcome_interaction(
                         session_id=state["session_id"], username=state["username"]
                     ):
-                        await websocket.send_json(response.dict())
+                        response_dict = response.dict()
+                        text_preview = (
+                            response_dict.get("text", "")[:50]
+                            if response_dict.get("text")
+                            else "None"
+                        )
+                        has_audio = "yes" if response_dict.get("audio_chunk") else "no"
+                        logger.info(
+                            f"ROUTER: Sending welcome response - text: {text_preview}, audio: {has_audio}"
+                        )
+                        await websocket.send_json(response_dict)
 
                 # Handle Cognitive 'PROCESS_AUDIO' Event
                 if data.get("event") == "PROCESS_AUDIO":
@@ -78,10 +120,13 @@ async def aries_websocket(websocket: WebSocket) -> None:
                     await asyncio.sleep(0.2)
 
                     logger.info(
-                        f"ROUTER: Finalizing turn. Buffer size: {len(state['audio_buffer'])} bytes."
+                        f"ROUTER: Finalizing turn. Buffer size: {len(state['audio_buffer'])} bytes."  # noqa: E501
                     )
 
                     if not state["audio_buffer"]:
+                        logger.warning(
+                            "ROUTER: No audio buffer - sending empty response"
+                        )
                         # Send an empty success signal if no audio was received.
                         await websocket.send_json(VoiceResponse(text="").dict())
                     else:
@@ -104,16 +149,21 @@ async def aries_websocket(websocket: WebSocket) -> None:
                             logger.error(f"ROUTER: Reasoning engine failure: {e}")
                             await websocket.send_json(
                                 VoiceResponse(
-                                    text="I'm sorry, I encountered a cognitive error during processing."
+                                    text="I'm sorry, I encountered a cognitive error during processing."  # noqa: E501
                                 ).dict()
                             )
 
             # CASE 2: BINARY AUDIO (Transcription Chunks)
             elif "bytes" in message:
+                chunk_size = len(message["bytes"])
                 state["audio_buffer"] += message["bytes"]
-                # High-frequency binary logs are throttled to 'debug' level.
-                logger.debug(
-                    f"ROUTER: Buffered chunk. Total: {len(state['audio_buffer'])}B"
+                logger.info(
+                    f"ROUTER: Received audio chunk ({chunk_size}B). Total buffer: {len(state['audio_buffer'])}B"
+                )
+            else:
+                # Log unknown message type for debugging
+                logger.warning(
+                    f"ROUTER: Unknown message type: {message.get('type')}, keys: {list(message.keys())}"
                 )
 
     except WebSocketDisconnect:

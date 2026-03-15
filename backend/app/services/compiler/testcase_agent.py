@@ -10,8 +10,9 @@ import logging
 import re
 from typing import Any
 
-from app.core.config import settings
 from groq import Groq
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -41,16 +42,16 @@ async def generate_hidden_testcases(
     client = Groq(api_key=settings.GROQ_API_KEY)
 
     system_prompt = f"""You are an elite competitive programmer and testing engineer.
-Your task is to generate {num_cases} highly tricky, edge-case focused hidden test cases for a coding problem.
+Your task is to generate {num_cases} tricky, edge-case focused hidden test cases.
 
-You MUST follow the constraints strictly.
-You MUST format your output as a strict JSON object with a single key "testcases" containing an array of objects.
+You MUST follow constraints strictly.
+You MUST format output as JSON with key "testcases" containing an array.
 
 Format Rules:
-1. Each object represents ONE complete test case.
-2. Keys: "input" (newline-separated arguments) and "expected_output" (JSON serialization).
-3. The "input" string MUST represent the exact multiline format LeetCode uses.
-4. The "expected_output" MUST be logically verified and strictly serialized.
+1. Each object is ONE test case.
+2. Keys: "input" (newline-separated) and "expected_output" (JSON).
+3. "input" MUST match LeetCode multiline format.
+4. "expected_output" MUST be verified and serialized.
 
 Example:
 {{
@@ -67,7 +68,7 @@ Example:
 Problem Description: {description}
 Constraints: {constraints}
 
-Generate exactly {num_cases} hidden test cases evaluating max/min limits and tricky logic edge cases."""
+Generate {num_cases} hidden test cases for edge cases."""
 
     try:
         response = client.chat.completions.create(

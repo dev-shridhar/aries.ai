@@ -6,9 +6,10 @@ os.environ["DEEPGRAM_API_KEY"] = "fake_key"
 os.environ["GROQ_API_KEY"] = "fake_key"
 
 import pytest
-from app.services.aries.pipeline.graph import get_aries_graph, should_continue
 from langchain_core.messages import AIMessage
 from langgraph.graph import END
+
+from app.services.aries.pipeline.graph import get_aries_graph, should_continue
 
 
 @pytest.fixture

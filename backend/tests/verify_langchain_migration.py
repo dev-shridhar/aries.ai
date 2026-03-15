@@ -5,11 +5,12 @@ import sys
 # Add the backend directory to sys.path
 sys.path.append(os.path.join(os.getcwd(), "backend"))
 
+from langchain_core.messages import HumanMessage
+
 from app.infrastructure.aries.mongo_client import aries_mongo
 from app.infrastructure.aries.redis_client import aries_redis
 from app.services.aries.pipeline.graph import aries_graph
 from app.services.aries.service import aries_service
-from langchain_core.messages import HumanMessage
 
 
 async def test_langchain_flow():

@@ -8,6 +8,7 @@ with the infrastructure layer using mocks for isolation.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from app.services.mcp.service import MCPService
 
 

@@ -8,6 +8,7 @@ logic from actual database processes.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from app.infrastructure.aries.mongo_client import AriesMongoClient
 
 

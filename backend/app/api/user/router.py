@@ -6,10 +6,11 @@ synchronizing platform-wide user data with the persistence layer.
 
 import logging
 
+from fastapi import APIRouter, HTTPException, Query
+
 from app.core.user.models import UserProfile
 from app.services.aries.memory import memory_service
 from app.services.user.service import user_service
-from fastapi import APIRouter, HTTPException, Query
 
 logger = logging.getLogger(__name__)
 

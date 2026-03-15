@@ -2,8 +2,9 @@ import datetime
 import logging
 from typing import Any
 
-from app.core.config import settings
 from motor.motor_asyncio import AsyncIOMotorClient
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +231,7 @@ class AriesMongoClient:
         """Saves a code execution or problem-solving event.
 
         Args:
-            session_data (Dict[str, Any]): Details of the execution (code, language, output).
+            session_data (Dict[str, Any]): Execution details (code, language, output).
 
         Returns:
             Any: Insertion result.

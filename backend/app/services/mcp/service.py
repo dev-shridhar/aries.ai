@@ -6,8 +6,9 @@ MCP servers, abstracting the low-level infrastructure transport details.
 
 from typing import Any
 
-from app.infrastructure.mcp.client import mcp_infra
 from mcp import ClientSession
+
+from app.infrastructure.mcp.client import mcp_infra
 
 
 class MCPService:

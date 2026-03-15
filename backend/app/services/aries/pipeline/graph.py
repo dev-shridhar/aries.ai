@@ -3,11 +3,12 @@ import operator
 from collections.abc import Sequence
 from typing import Annotated, Any, TypedDict
 
-from app.services.aries.pipeline.brain import brain_adapter
-from app.services.aries.pipeline.tools import get_full_aries_tools
 from langchain_core.messages import BaseMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
+
+from app.services.aries.pipeline.brain import brain_adapter
+from app.services.aries.pipeline.tools import get_full_aries_tools
 
 logger = logging.getLogger(__name__)
 

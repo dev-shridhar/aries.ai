@@ -1,8 +1,13 @@
+import logging
+
 import httpx
+
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
 
-class TTSAdapter:
+
+class DeepgramTTSAdapter:
     """Adapter for converting text characters into spoken audio using Deepgram Aura.
 
     This class provides the 'Motor Output' layer for the Aries agent, allowing
@@ -15,9 +20,8 @@ class TTSAdapter:
     """
 
     def __init__(self):
-        """Initializes the TTSAdapter with configured provider settings."""
+        """Initializes the DeepgramTTSAdapter with configured provider settings."""
         self.api_key = settings.DEEPGRAM_API_KEY
-        # Asteria model provides a natural, conversational tone with low latency.
         self.base_url = (
             "https://api.deepgram.com/v1/speak"
             "?model=aura-asteria-en"
@@ -51,5 +55,23 @@ class TTSAdapter:
             return resp.content
 
 
-# Global singleton instance for the Aries pipeline motor layer.
-tts_adapter = TTSAdapter()
+# Import the Groq adapter
+from app.services.aries.pipeline.groq_tts import groq_tts_adapter
+
+
+def get_tts_adapter():
+    """Get the appropriate TTS adapter based on configuration.
+
+    Returns:
+        The TTS adapter based on settings.TTS_PROVIDER
+    """
+    if settings.TTS_PROVIDER == "groq":
+        logger.info("TTS: Using Groq Orpheus for text-to-speech")
+        return groq_tts_adapter
+    else:
+        logger.info("TTS: Using Deepgram Aura for text-to-speech")
+        return DeepgramTTSAdapter()
+
+
+# Global singleton instance - uses config to determine which adapter to use
+tts_adapter = get_tts_adapter()

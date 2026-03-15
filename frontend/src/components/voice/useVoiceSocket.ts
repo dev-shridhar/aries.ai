@@ -24,17 +24,28 @@ export const useVoiceSocket = (url: string, onAudioChunk?: (chunk: string) => vo
   const [partialTranscript, setPartialTranscript] = useState<string>('');
   const [aiResponse, setAiResponse] = useState<string>('');
   
+  // Use ref for socket to avoid stale closures
+  const socketRef = useRef<WebSocket | null>(null);
+  
   const onAudioChunkRef = useRef(onAudioChunk);
   useEffect(() => {
     onAudioChunkRef.current = onAudioChunk;
   }, [onAudioChunk]);
 
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const sessionIdRef = useRef<string>(crypto.randomUUID());
+  const getSessionId = () => {
+    const saved = localStorage.getItem('aries_session_id');
+    if (saved) return saved;
+    const newId = crypto.randomUUID();
+    localStorage.setItem('aries_session_id', newId);
+    return newId;
+  };
+  const sessionIdRef = useRef<string>(getSessionId());
   const usernameRef = useRef<string>(localStorage.getItem('aries_username') || 'anonymous');
 
   const connect = useCallback(() => {
     const ws = new WebSocket(url);
+    socketRef.current = ws;
 
     ws.onopen = () => {
       console.log('Voice WebSocket connected');
@@ -76,8 +87,13 @@ export const useVoiceSocket = (url: string, onAudioChunk?: (chunk: string) => vo
     };
 
     ws.onclose = () => {
-      console.log('Voice WebSocket disconnected');
+      console.log('Voice WebSocket disconnected - will reconnect');
       setIsConnected(false);
+      // Clear any existing reconnect timeout before scheduling a new one
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      console.log('Scheduling reconnect in 3 seconds...');
       reconnectTimeoutRef.current = setTimeout(connect, 3000);
     };
 
@@ -85,32 +101,36 @@ export const useVoiceSocket = (url: string, onAudioChunk?: (chunk: string) => vo
       console.error('Voice WebSocket error', err);
     };
 
+    socketRef.current = ws;
     setSocket(ws);
   }, [url]);
 
   useEffect(() => {
     connect();
     return () => {
-      if (socket) socket.close();
+      if (socketRef.current) socketRef.current.close();
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
     };
   }, [connect]);
 
   const sendVoiceRequest = useCallback((request: VoiceRequest) => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
         ...request,
         session_id: sessionIdRef.current,
         username: usernameRef.current
       }));
     }
-  }, [socket]);
+  }, []);
 
   const sendVoiceChunk = useCallback((chunk: Blob | ArrayBuffer) => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(chunk);
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      console.log('Sending voice chunk, socket state:', socketRef.current.readyState, 'chunk size:', chunk instanceof Blob ? chunk.size : 'arraybuffer');
+      socketRef.current.send(chunk);
+    } else {
+      console.warn('Cannot send voice chunk - socket not open, state:', socketRef.current?.readyState);
     }
-  }, [socket]);
+  }, []);
 
   return {
     isConnected,
@@ -120,6 +140,7 @@ export const useVoiceSocket = (url: string, onAudioChunk?: (chunk: string) => vo
     sendVoiceChunk,
     setAiResponse,
     aiResponse,
+    socket: socketRef.current,
     sessionId: sessionIdRef.current,
     username: usernameRef.current
   };

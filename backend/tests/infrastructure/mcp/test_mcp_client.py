@@ -7,9 +7,10 @@ logic using mocks for the MCP Python SDK components.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from app.infrastructure.mcp.client import MCPInfrastructure
 from mcp.shared.exceptions import McpError
 from mcp.types import ErrorData
+
+from app.infrastructure.mcp.client import MCPInfrastructure
 
 
 @pytest.fixture

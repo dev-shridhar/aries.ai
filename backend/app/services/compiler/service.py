@@ -77,7 +77,7 @@ def run_all_tests(raw_examples, expected_outputs):
         methods = [m for m in inspect.getmembers(sol, predicate=inspect.ismethod) 
                    if not m[0].startswith("__")]
         if not methods:
-            print(json.dumps([{"error": "No solution method found in Solution class."}]))
+            print(json.dumps([{"error": "No solution method found."}]))
             return
         
         name, method = methods[0]
@@ -118,12 +118,16 @@ def run_all_tests(raw_examples, expected_outputs):
                     if isinstance(parsed_expected, str):
                         passed = str(result_val).strip() == parsed_expected.strip()
                     else:
-                        passed = json.dumps(result_val, sort_keys=True) == json.dumps(parsed_expected, sort_keys=True)
-                        if __ORDER_INDEPENDENT__ and not passed and isinstance(result_val, list) and isinstance(parsed_expected, list):
-                            try:
-                                passed = sorted(result_val) == sorted(parsed_expected)
-                            except Exception:
-                                pass
+                        result_json = json.dumps(result_val, sort_keys=True)
+                        expected_json = json.dumps(parsed_expected, sort_keys=True)
+                        passed = result_json == expected_json
+                        if __ORDER_INDEPENDENT__:
+                            if not passed:
+                                if isinstance(result_val, list) and isinstance(parsed_expected, list):
+                                    try:
+                                        passed = sorted(result_val) == sorted(parsed_expected)
+                                    except Exception:
+                                        pass
                     expected_serialization = serialize(parsed_expected)
                 
                 results.append({

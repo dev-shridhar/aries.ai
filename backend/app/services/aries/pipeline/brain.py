@@ -3,10 +3,10 @@ import logging
 from collections.abc import AsyncGenerator
 
 import httpx
-from app.core.config import settings
-from langchain_core.messages import (AIMessage, BaseMessage, HumanMessage,
-                                     SystemMessage)
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class BrainAdapter:
         """Initializes the BrainAdapter with configured provider settings."""
         self.groq_llm = ChatGroq(
             api_key=settings.GROQ_API_KEY,
-            model_name=settings.BRAIN_MODEL,
+            model=settings.BRAIN_MODEL,
         )
         self.ollama_base_url = "http://localhost:11434/api"
 
@@ -38,7 +38,7 @@ class BrainAdapter:
             history (List[Dict[str, str]]): List of messages with 'role' and 'content'.
 
         Returns:
-            List[BaseMessage]: List of HumanMessage, AIMessage, and SystemMessage objects.
+            List[BaseMessage]: List of conversation message objects.
         """
         messages = []
         for turn in history:
@@ -63,11 +63,11 @@ class BrainAdapter:
         """Generates a complete text response from the selected LLM provider.
 
         Args:
-            text (str): The user's input sequence or query.
-            system_prompt (str): The persona or behavioral guidance for the LLM.
-            history (Optional[List[Dict[str, str]]]): Previous turns of the conversation.
-            provider (str): The inference provider ('groq' or 'ollama'). Defaults to 'groq'.
-            model (Optional[str]): Override for the model name. Defaults to settings.BRAIN_MODEL.
+            text (str): User's input sequence or query.
+            system_prompt (str): Persona or behavioral guidance for the LLM.
+            history (Optional[List[Dict[str, str]]]): Previous conversation turns.
+            provider (str): Inference provider. Defaults to 'groq'.
+            model (Optional[str]): Model name override. Defaults to BRAIN_MODEL.
 
         Returns:
             str: The generated text response.
@@ -82,15 +82,13 @@ class BrainAdapter:
 
         try:
             if provider == "groq":
-                response = await self.groq_llm.ainvoke(messages)
-                return response.content
+                response = await self.groq_llm.ainvoke(messages)  # type: ignore
+                return response.content  # type: ignore
             else:
                 return await self._ollama_inference(text, system_prompt, history, model)
         except Exception as e:
             logger.error(f"BRAIN_ERROR: Inference failed during single generation: {e}")
-            return (
-                "I'm having trouble thinking clearly at the moment. Please try again."
-            )
+            return "I'm having trouble thinking clearly. Please try again."
 
     async def generate_response_stream(
         self,
@@ -103,27 +101,27 @@ class BrainAdapter:
         """Generates a streaming text response for lower perceived latency.
 
         Args:
-            text (str): The user's input sequence or query.
-            system_prompt (str): The persona or behavioral guidance for the LLM.
-            history (Optional[List[Dict[str, str]]]): Previous turns of the conversation.
-            provider (str): The inference provider ('groq' or 'ollama'). Defaults to 'groq'.
-            model (Optional[str]): Override for the model name. Defaults to settings.BRAIN_MODEL.
+            text (str): User's input sequence or query.
+            system_prompt (str): Persona or behavioral guidance for the LLM.
+            history (Optional[List[Dict[str, str]]]): Previous conversation turns.
+            provider (str): Inference provider. Defaults to 'groq'.
+            model (Optional[str]): Model name override. Defaults to BRAIN_MODEL.
 
         Yields:
             str: Incremental text chunks from the LLM.
         """
         model = model or settings.BRAIN_MODEL
 
-        messages = [SystemMessage(content=system_prompt)]
+        messages: list[BaseMessage] = [SystemMessage(content=system_prompt)]
         if history:
             messages.extend(self._convert_history(history))
-        messages.append(HumanMessage(content=text))
+        messages.append(HumanMessage(content=text))  # type: ignore
 
         try:
             if provider == "groq":
-                async for chunk in self.groq_llm.astream(messages):
-                    if chunk.content:
-                        yield chunk.content
+                async for chunk in self.groq_llm.astream(messages):  # type: ignore
+                    if chunk.content:  # type: ignore
+                        yield chunk.content  # type: ignore
             else:
                 async for chunk in self._ollama_inference_stream(
                     text, system_prompt, history, model
@@ -139,8 +137,8 @@ class BrainAdapter:
         """Generates high-dimensional vector embeddings via local Ollama.
 
         Args:
-            text (str): The input text to vectorize.
-            model (str): The embedding model name. Defaults to 'nomic-embed-text:latest'.
+            text (str): Input text to vectorize.
+            model (str): Embedding model name. Defaults to 'nomic-embed-text:latest'.
 
         Returns:
             List[float]: A list of floats representing the text in vector space.

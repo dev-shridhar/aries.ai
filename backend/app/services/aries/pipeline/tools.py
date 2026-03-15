@@ -1,9 +1,10 @@
 import logging
 from typing import Any
 
+from langchain_core.tools import tool
+
 from app.infrastructure.aries.chroma_client import chroma_manager
 from app.infrastructure.aries.redis_client import aries_redis
-from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
 

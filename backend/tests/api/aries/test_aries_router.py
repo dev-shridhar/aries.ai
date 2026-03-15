@@ -8,10 +8,11 @@ orchestration work correctly using FastAPI's TestClient and mocks.
 from unittest.mock import patch
 
 import pytest
-from app.api.aries.router import router
-from app.core.aries.models import VoiceResponse
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+from app.api.aries.router import router
+from app.core.aries.models import VoiceResponse
 
 app = FastAPI()
 app.include_router(router)

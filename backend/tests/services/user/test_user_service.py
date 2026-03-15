@@ -8,6 +8,7 @@ using asynchronous mocks.
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
 from app.core.user.models import UserProfile
 from app.services.user.service import user_service
 

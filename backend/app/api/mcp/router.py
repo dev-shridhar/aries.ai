@@ -12,9 +12,10 @@ import logging
 import re
 from typing import Any
 
+from fastapi import APIRouter, HTTPException, Query
+
 from app.services.aries.memory import memory_service
 from app.services.mcp.service import MCPService
-from fastapi import APIRouter, HTTPException, Query
 
 logger = logging.getLogger(__name__)
 

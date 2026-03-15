@@ -7,6 +7,7 @@ os.environ["DEEPGRAM_API_KEY"] = "fake_key"
 os.environ["GROQ_API_KEY"] = "fake_key"
 
 import pytest
+
 from app.services.aries.pipeline.mcp_tools import MCPToolFactory
 
 

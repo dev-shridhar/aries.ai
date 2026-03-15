@@ -8,9 +8,10 @@ asynchronous testing patterns.
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from httpx import ASGITransport, AsyncClient
+
 from app.core.user.models import UserProfile
 from app.main import app
-from httpx import ASGITransport, AsyncClient
 
 
 @pytest.mark.asyncio

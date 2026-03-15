@@ -1,9 +1,10 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
-from app.infrastructure.mcp.client import mcp_infra
 from langchain_core.tools import StructuredTool
 from pydantic import Field, create_model
+
+from app.infrastructure.mcp.client import mcp_infra
 
 logger = logging.getLogger(__name__)
 
@@ -53,21 +54,18 @@ class MCPToolFactory:
                         continue
 
                     def create_tool_fn(name: str):
-                        """Creates a closure to preserve tool name during async execution."""
+                        """Creates a closure to preserve tool name."""
 
                         async def tool_fn(**kwargs) -> str:
                             """Internal execution wrapper for the MCP tool call."""
-                            # We use a one-off session pattern for public tools to ensure
-                            # they are stateless and don't leak context between users.
                             async with mcp_infra.get_session() as (conn, _):
                                 return await mcp_infra.call_tool(conn, name, kwargs)
 
                         return tool_fn
 
                     # PHASE 3: Dynamic Schema Generation
-                    # We map MCP JSON-schema types to Python types using pydantic.create_model.
-                    # This allows LangChain's StructuredTool to correctly validate and
-                    # pass arguments from the LLM during the agentic reasoning loop.
+                    # Map MCP JSON-schema types to Python types.
+                    # Allows StructuredTool to validate arguments.
                     params = metadata["function"].get(
                         "parameters", {"type": "object", "properties": {}}
                     )
@@ -95,7 +93,7 @@ class MCPToolFactory:
                             )
                         else:
                             fields[prop_name] = (
-                                Optional[python_type],
+                                python_type | None,
                                 Field(default=None, description=description),
                             )
 

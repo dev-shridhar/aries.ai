@@ -1,7 +1,8 @@
 import logging
 
-from app.core.config import settings
 from langchain_community.chat_message_histories import RedisChatMessageHistory
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
