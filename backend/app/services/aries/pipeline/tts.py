@@ -1,5 +1,5 @@
 import logging
-
+import time
 import httpx
 
 from app.core.config import settings
@@ -7,7 +7,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-class DeepgramTTSAdapter:
+class TTSAdapter:
     """Adapter for converting text characters into spoken audio using Deepgram Aura.
 
     This class provides the 'Motor Output' layer for the Aries agent, allowing
@@ -41,18 +41,25 @@ class DeepgramTTSAdapter:
         Raises:
             httpx.HTTPStatusError: If the Deepgram API returns a non-200 response.
         """
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                self.base_url,
-                headers={
-                    "Authorization": f"Token {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={"text": text},
-                timeout=10.0,
-            )
-            resp.raise_for_status()
-            return resp.content
+        import time
+        from app.infrastructure.shared_client import shared_http_client
+        client = await shared_http_client.get_client()
+        
+        tts_start = time.time()
+        resp = await client.post(
+            self.base_url,
+            headers={
+                "Authorization": f"Token {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json={"text": text},
+            timeout=10.0,
+        )
+        tts_duration = time.time() - tts_start
+        logger.info(f"DEEPGRAM_TTS: API request took {tts_duration:.2f}s")
+        
+        resp.raise_for_status()
+        return resp.content
 
 
 # Import the Groq adapter
@@ -70,7 +77,7 @@ def get_tts_adapter():
         return groq_tts_adapter
     else:
         logger.info("TTS: Using Deepgram Aura for text-to-speech")
-        return DeepgramTTSAdapter()
+        return TTSAdapter()
 
 
 # Global singleton instance - uses config to determine which adapter to use

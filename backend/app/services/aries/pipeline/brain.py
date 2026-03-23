@@ -28,6 +28,7 @@ class BrainAdapter:
         self.groq_llm = ChatGroq(
             api_key=settings.GROQ_API_KEY,
             model=settings.BRAIN_MODEL,
+            temperature=0.1,
         )
         self.ollama_base_url = "http://localhost:11434/api"
 
@@ -87,7 +88,8 @@ class BrainAdapter:
             else:
                 return await self._ollama_inference(text, system_prompt, history, model)
         except Exception as e:
-            logger.error(f"BRAIN_ERROR: Inference failed during single generation: {e}")
+            logger.error(f"BRAIN_ERROR: Groq inference failed: {str(e)}")
+            # If it's a 400 error, the message often contains the reason
             return "I'm having trouble thinking clearly. Please try again."
 
     async def generate_response_stream(

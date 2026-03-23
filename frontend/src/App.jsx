@@ -25,13 +25,7 @@ function App() {
   const [ariesBubble, setAriesBubble] = useState('')
   const [showAriesBubble, setShowAriesBubble] = useState(false)
   const [toasts, setToasts] = useState([])
-  const [currentSessionId, setCurrentSessionId] = useState(() => {
-    const saved = localStorage.getItem('aries_session_id');
-    if (saved) return saved;
-    const newId = crypto.randomUUID();
-    localStorage.setItem('aries_session_id', newId);
-    return newId;
-  })
+  const [currentSessionId, setCurrentSessionId] = useState(() => localStorage.getItem('aries_session_id') || '')
   const [currentUsername, setCurrentUsername] = useState(() => localStorage.getItem('aries_username') || 'anonymous')
   const codeEditorRef = useRef(null)
 
@@ -76,13 +70,7 @@ function App() {
   }
 
   useEffect(() => {
-    setTimeout(() => {
-      if (view === 'home') {
-        setAriesBubble("An O(n) solution today keeps the TLE away! Ready to optimize your logic?")
-        setShowAriesBubble(true)
-        setTimeout(() => setShowAriesBubble(false), 4000)
-      }
-    }, 2000)
+    // No automatic bubble notifications anymore to stay voice-first
   }, [view])
 
 
@@ -184,6 +172,11 @@ function App() {
       }
     } else if (action === 'RECORD_FACT') {
       addToast(`Aries learned: ${payload.concept}`, 'success');
+    } else if (action === 'ARIES_SPEECH' && payload?.text) {
+      // Keep logs as requested, but remove visual bubble
+      // setAriesBubble(payload.text);
+      // setShowAriesBubble(true);
+      // setTimeout(() => setShowAriesBubble(false), 8000);
     }
   }, [currentSessionId, currentUsername]);
 

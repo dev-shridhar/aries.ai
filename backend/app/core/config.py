@@ -42,14 +42,14 @@ class Settings(BaseSettings):
 
     # --- AGENTIC CORE (BRAIN) ---
     BRAIN_PROVIDER: str = "groq"
-    BRAIN_MODEL: str = "moonshotai/kimi-k2-instruct-0905"
+    BRAIN_MODEL: str = "llama-3.3-70b-versatile"
     EMBEDDING_MODEL: str = "nomic-embed-text:latest"
 
     # --- STT CONFIGURATION ---
-    STT_PROVIDER: str = "groq"  # Options: "groq" or "deepgram"
+    STT_PROVIDER: str = "deepgram"  # Options: "groq" or "deepgram"
 
     # --- TTS CONFIGURATION ---
-    TTS_PROVIDER: str = "groq"  # Options: "groq" or "deepgram"
+    TTS_PROVIDER: str = "deepgram"  # Options: "groq" or "deepgram"
 
     # Pydantic configuration for environment variable loading
     model_config = {

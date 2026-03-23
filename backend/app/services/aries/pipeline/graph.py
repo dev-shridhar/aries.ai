@@ -1,5 +1,6 @@
 import logging
 import operator
+import time
 from collections.abc import Sequence
 from typing import Annotated, Any, TypedDict
 
@@ -66,11 +67,10 @@ _cached_graph = None
 async def get_aries_graph() -> Any:
     """Dynamically compiles the Aries LangGraph with the latest tools.
 
-    This factory performs the following steps:
-    1. Discovers all core and MCP (External) tools.
-    2. Binds these tools to the primary LLM (BrainAdapter).
-    3. Defines the 'agent' node for reasoning and 'tools' node for execution.
-    4. Compiles the cyclic graph with conditional routing.
+    This factory implements an 'Anthropic-style' deferred tool loading pattern:
+    1. Core tools are always bound to the LLM.
+    2. Specialized MCP tools are only bound IF discovered via 'search_available_tools'.
+    3. The graph remains execute-ready for all tools via the ToolNode.
 
     Returns:
         Any: A compiled LangGraph `CompiledGraph` object ready for invocation.
@@ -81,42 +81,68 @@ async def get_aries_graph() -> Any:
 
     logger.info("GRAPH: Compiling Aries dynamic reasoning loop...")
 
-    # 1. Discover all tools (Core Sensing + LeetCode MCP)
-    all_tools = await get_full_aries_tools()
+    # 1. Discover all possible tools (needed for the execution node)
+    from app.services.aries.pipeline.tools import aries_core_tools, get_full_aries_tools, get_extended_aries_tools
+    all_possible_tools = await get_full_aries_tools()
+    extended_tools = await get_extended_aries_tools()
 
-    # 2. Bind Tools to LLM (Provides the LLM with the ability to call tools)
-    llm_with_tools = brain_adapter.groq_llm.bind_tools(all_tools)
-
-    # 3. Define the 'Agent' node logic
+    # 2. Define the 'Agent' node with DYNAMIC tool binding
     async def call_model(state: AgentState) -> dict:
-        """Invokes the LLM with the current state and system prompt."""
+        """Invokes the LLM with a dynamically bound toolset."""
         messages = state["messages"]
         system_prompt = state.get("system_prompt", "You are Aries, a coding companion.")
+        
+        # Start with core tools
+        active_tools = list(aries_core_tools)
+        
+        # Scan history for search_available_tools results
+        # if the agent searched for tools, we "unlock" them in the LLM context
+        from langchain_core.messages import ToolMessage
+        import re
+        
+        discovered_names = set()
+        for msg in messages:
+            if isinstance(msg, ToolMessage) and msg.name == "search_available_tools":
+                found = re.findall(r"- NAME: (\w+)", msg.content)
+                discovered_names.update(found)
+        
+        if discovered_names:
+            logger.info(f"GRAPH: Dynamically binding discovered tools: {discovered_names}")
+            for t in extended_tools:
+                if t.name in discovered_names:
+                    active_tools.append(t)
 
-        # Ensure the system prompt is always at the top of the message list
+        # Bind the active toolset to the LLM
+        llm_with_tools = brain_adapter.groq_llm.bind_tools(active_tools)
+
+        # Ensure the system prompt is always at the top
         full_messages = [SystemMessage(content=system_prompt)] + list(messages)
 
-        logger.info(f"GRAPH: Invoking LLM for session {state.get('session_id')}")
+        logger.info(f"GRAPH: Invoking LLM with {len(active_tools)} tools bound.")
+        t_start = time.time()
         response = await llm_with_tools.ainvoke(full_messages)
+        logger.info(f"GRAPH: LLM invocation took {time.time() - t_start:.2f}s")
 
-        # Update the state with the model's response
         return {"messages": [response]}
 
-    # 4. Define Graph Topology
+    # 3. Define Graph Topology
     workflow = StateGraph(AgentState)
 
-    # Add primary nodes
+    # Add nodes
     workflow.add_node("agent", call_model)
-    workflow.add_node("tools", ToolNode(all_tools))
+    workflow.add_node("tools", ToolNode(all_possible_tools)) # Execution node knows all
 
-    # Define edges and routing
+    # Define edges
     workflow.set_entry_point("agent")
     workflow.add_conditional_edges("agent", should_continue)
     workflow.add_edge("tools", "agent")
 
-    # Compile and cache
-    _cached_graph = workflow.compile()
-    logger.info("GRAPH: Aries Graph compiled successfully.")
+    # 4. Persistence
+    from langgraph.checkpoint.memory import MemorySaver
+    checkpointer = MemorySaver()
+
+    _cached_graph = workflow.compile(checkpointer=checkpointer)
+    logger.info("GRAPH: Aries Graph compiled with Dynamic Discovery pattern.")
 
     return _cached_graph
 

@@ -12,6 +12,7 @@ interface VoiceAgentProps {
 const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, onSessionInit }) => {
     const [isActive, setIsActive] = useState(false);
     const [isListening, setIsListening] = useState(false);
+    const isConnectedRef = useRef(false);
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [isThinking, setIsThinking] = useState(false);
     const [isAudioBlocked, setIsAudioBlocked] = useState(false);
@@ -42,21 +43,24 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
         onActionRef.current = onAction;
     }, [onAction]);
 
-    const { isConnected, lastResponse, partialTranscript, sendVoiceChunk, sendVoiceRequest, sessionId, username, aiResponse, setAiResponse, socket } = useVoiceSocket(
+    const { isConnected, lastResponse, partialTranscript, sendVoiceChunk, sendVoiceRequest, sessionId, username, aiResponse, setAiResponse, socket, socketRef, connect } = useVoiceSocket(
         'ws://localhost:8000/api/aries/ws',
         handleAudioChunk
     );
+
+    // Initial session sync with parent
+    useEffect(() => {
+        isConnectedRef.current = isConnected;
+        if (isConnected && onSessionInitRef.current) {
+            onSessionInitRef.current(sessionId, username);
+        }
+    }, [isConnected, sessionId, username]);
 
     const isFirstActivationRef = useRef(true);
 
     // Session Init & Cleanup
     useEffect(() => {
-        if (isConnected) {
-            console.log("Aries: WebSocket Connected.");
-            if (onSessionInitRef.current) {
-                onSessionInitRef.current(sessionId, username);
-            }
-        } else {
+        if (!isConnected) {
             // Reset states if connection is lost
             setIsListening(false);
             setIsThinking(false);
@@ -64,8 +68,7 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
             audioQueueRef.current = [];
             isPlayingRef.current = false;
         }
-    }, [isConnected, sessionId, username]);
-    // Removed onSessionInit from dependencies to keep size stable and avoid re-renders
+    }, [isConnected]);
 
     // Instruction Bubble Cycle (Legacy - removed updates)
     useEffect(() => {
@@ -80,16 +83,35 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
     const analyserRef = useRef<AnalyserNode | null>(null);
     const silenceTimerRef = useRef<number | null>(null);
 
-    // Handle Voice Responses (Actions only now)
+    // Handle Voice Responses
     useEffect(() => {
         if (lastResponse && isActiveRef.current) {
-            // If we got ANY response from the backend, we definitely aren't "thinking" about the previous turn anymore
             setIsThinking(false);
 
-            // If this was a WELCOME response (has audio or text), start listening after audio plays
-            if ((lastResponse.text || lastResponse.audio_chunk) && !lastResponse.action) {
-                console.log("Aries: Welcome/response received, will start listening after audio...");
-                // Audio will trigger processAudioQueue which calls startRecording when done
+            // If this was a response to speech, start listening after audio plays
+            // We check !== undefined because "" (empty string) is a valid noise/silence signal from backend
+            if ((lastResponse.text !== undefined || lastResponse.audio_chunk) && !lastResponse.action) {
+                console.log("Aries: Response received (text length:", lastResponse.text?.length || 0, "), cycling turn...");
+                
+                // If there's an actual message, the audio play loop or TTS timeout will cycle back.
+                // If it's empty (noise/silence), don't auto-restart as it can cause an infinite loop in noisy rooms.
+                if (lastResponse.text === "" && !lastResponse.audio_chunk) {
+                    console.log("Aries: Noise/silence response, turn ended. (No auto-restaring to avoid loops)");
+                    setIsActive(false); // Force stop to be safe
+                    setIsThinking(false);
+                    return;
+                }
+
+                // SAFETY TIMEOUT: If text arrived but no audio starts playing within 2s,
+                // it means TTS likely failed or was skipped.
+                if (lastResponse.text && !lastResponse.audio_chunk) {
+                    setTimeout(() => {
+                        if (isActiveRef.current && !isPlayingRef.current && !isListening && !isThinking) {
+                            console.warn("Aries: Audio timed out, restoring mic loop.");
+                            startRecording();
+                        }
+                    }, 2500);
+                }
                 return;
             }
 
@@ -220,14 +242,12 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
             };
 
             mediaRecorder.onstop = () => {
-                console.log("Aries: MediaRecorder stopped, isConnected:", isConnected);
+                const currentReadyState = socketRef.current?.readyState ?? 'unknown';
+                console.log("Aries: MediaRecorder onstop triggered. Socket state:", currentReadyState);
                 setIsListening(false);
                 // Only show thinking if we are still active (not clicked to stop)
                 if (isActiveRef.current) {
                     setIsThinking(true);
-                    // Explicitly tell backend to process the accumulated buffer
-                    console.log("Aries: Sending PROCESS_AUDIO event");
-                    sendVoiceRequest({ event: "PROCESS_AUDIO" } as any);
                 }
             };
 
@@ -247,9 +267,9 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
             const bufferLength = analyser.frequencyBinCount;
             const dataArray = new Uint8Array(bufferLength);
             let silenceStart = Date.now();
-            let hasSpoken = false; // Prevent immediate timeout before speech starts
-            const SILENCE_THRESHOLD = 0.015; // Lower threshold to catch speech
-            const SILENCE_DURATION = 1500; // 1.5 seconds - more time to speak
+            let hasSpoken = false; 
+            const SILENCE_THRESHOLD = 0.05; // Slightly higher to ignore room noise spikes
+            const SILENCE_DURATION = 2000; // 2 seconds for breathing room
 
             console.log("Aries: VAD loop starting...");
             
@@ -281,6 +301,13 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
 
                 console.log(`VAD: rms=${rms.toFixed(4)}, hasSpoken=${hasSpoken}, isWarmedUp=${isWarmedUp}, silenceDuration=${silenceDuration}ms`);
 
+                // NO-SPEECH TIMEOUT: Stop if user hasn't spoken for 10 seconds
+                if (!hasSpoken && Date.now() - startTime > 10000) {
+                    console.log("Aries: No speech detected for 10s, stopping...");
+                    stopRecording();
+                    return;
+                }
+
                 if (rms > SILENCE_THRESHOLD) {
                     silenceStart = Date.now();
                     if (!hasSpoken) {
@@ -308,19 +335,19 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
             console.error('Error accessing microphone:', err);
             setIsActive(false);
             isActiveRef.current = false;
+            isRecordingInProgressRef.current = false;
         }
     };
 
     const stopRecording = () => {
-        console.log("Aries: stopRecording called - sending PROCESS_AUDIO event");
-        console.log("Aries: mediaRecorder state:", mediaRecorderRef.current?.state);
+        console.log("Aries: stopRecording called");
         
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-            mediaRecorderRef.current.requestData(); // Force emission of buffered audio
             mediaRecorderRef.current.stop();
         }
         
         // Send PROCESS_AUDIO event
+        console.log("Aries: Requesting PROCESS_AUDIO...");
         sendVoiceRequest({ event: "PROCESS_AUDIO" });
         
         if (streamRef.current) {
@@ -341,9 +368,12 @@ const VoiceAgent: React.FC<VoiceAgentProps> = ({ view, currentCode, onAction, on
             setIsActive(true);
             isActiveRef.current = true;
             
-            console.log("Aries: Triggering backend WELCOME.");
+            // Initiate connection on click
+            connect();
+            
+            // startRecording(); // REMOVED: Should only start after Aries speaks
             setIsThinking(true);
-            sendVoiceRequest({ event: "WELCOME" } as any);
+            sendVoiceRequest({ event: "WELCOME" });
             
             if (isAudioBlocked) {
                 setIsAudioBlocked(false);

@@ -59,7 +59,7 @@ class AriesRedisClient:
         return f"aries:session:{session_id}:context"
 
     async def add_message(
-        self, session_id: str, role: str, message: str, limit: int = 15
+        self, session_id: str, role: str, message: str, limit: int = 10
     ) -> None:
         """Adds a message to the rolling conversation context window.
 
@@ -67,7 +67,7 @@ class AriesRedisClient:
             session_id (str): The unique session identifier.
             role (str): The message role ('user', 'aries', 'assistant').
             message (str): The raw text content of the message.
-            limit (int): Max number of messages to keep in the window. Defaults to 15.
+            limit (int): Max number of messages to keep in the window. Defaults to 10.
         """
         key = self._get_context_key(session_id)
         # We normalize 'aries' to 'assistant' for LLM provider consistency.

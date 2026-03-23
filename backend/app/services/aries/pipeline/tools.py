@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import time
 from typing import Any
 
 from langchain_core.tools import tool
@@ -94,12 +96,14 @@ class AriesTools:
         """
         try:
             # PHASE 2: High-performance vector search in ChromaDB
+            t_start = time.time()
             results = await chroma_manager.similarity_search(
                 collection_name="user_memory",
                 query=query,
                 limit=3,
                 filter={"username": username},
             )
+            logger.info(f"TOOL: search_memory_palace took {time.time() - t_start:.2f}s")
 
             if not results:
                 return f"No memories found for query: '{query}'"
@@ -114,6 +118,67 @@ class AriesTools:
         except Exception as e:
             logger.error(f"TOOL_ERROR (search_memory_palace): {e}")
             return f"Error searching memory: {str(e)}"
+    @staticmethod
+    @tool
+    async def trigger_load_problem(slug: str) -> str:
+        """Load a LeetCode problem by its slug."""
+        return f"SIGNAL:ACTION:LOAD_PROBLEM:{slug}"
+
+    @staticmethod
+    @tool
+    async def trigger_run_code() -> str:
+        """Run the current code."""
+        return "SIGNAL:ACTION:RUN_CODE"
+
+    @staticmethod
+    @tool
+    async def trigger_submit_code() -> str:
+        """Submit the code for verification."""
+        return "SIGNAL:ACTION:SUBMIT_CODE"
+
+    @staticmethod
+    @tool
+    async def search_available_tools(query: str) -> str:
+        """Searches the 'Extended Toolbelt' for specialized capabilities.
+
+        Use this tool when none of your immediate tools (history, state, memory) 
+        satisfy the user's request. It searches the LeetCode MCP server for 
+        advanced tools (e.g., contest rankings, detailed problem solutions).
+
+        Args:
+            query (str): The functionality you are looking for (e.g., 'contest', 'solutions').
+
+        Returns:
+            str: A list of tool names and descriptions matching your query.
+        """
+        try:
+            from app.services.aries.pipeline.tools import get_full_aries_tools
+            all_tools = await get_full_aries_tools()
+            
+            # Filter tools that match the query in name or description
+            query_lower = query.lower()
+            matches = []
+            for t in all_tools:
+                # StructuredTool and BaseTool have name/description
+                if query_lower in t.name.lower() or query_lower in t.description.lower():
+                    matches.append(f"- NAME: {t.name}\n  DESC: {t.description}")
+            
+            if not matches:
+                return f"No specialized tools found for '{query}'. Try a broader search."
+            
+            return "Found the following specialized tools. You can now call them by name:\n" + "\n".join(matches)
+        except Exception as e:
+            logger.error(f"TOOL_ERROR (search_available_tools): {e}")
+            return f"Error searching tools: {str(e)}"
+
+    @staticmethod
+    @tool
+    async def trigger_navigation(view: str) -> str:
+        """Triggers the UI to navigate to a different view (e.g., 'home', 'problems', 'solve').
+        
+        Use this when the user wants to switch context or go back.
+        """
+        return f"SIGNAL:ACTION:NAVIGATE:{view}"
 
 
 # Core tool list for static binding (sensory/short-term)
@@ -121,7 +186,35 @@ aries_core_tools = [
     AriesTools.get_recent_history,
     AriesTools.get_current_state,
     AriesTools.search_memory_palace,
+    AriesTools.search_available_tools,
+    AriesTools.trigger_load_problem,
+    AriesTools.trigger_run_code,
+    AriesTools.trigger_submit_code,
+    AriesTools.trigger_navigation,
 ]
+
+
+_cached_all_tools = None
+_loading_task = None
+
+
+async def preload_aries_tools():
+    """Background task to discover and cache tools early."""
+    global _cached_all_tools
+    try:
+        from app.services.aries.pipeline.mcp_tools import get_mcp_tools
+        mcp_tools = await get_mcp_tools()
+        _cached_all_tools = aries_core_tools + mcp_tools
+        logger.info(f"TOOLS: Background discovery complete. {len(_cached_all_tools)} tools cached.")
+    except Exception as e:
+        logger.error(f"TOOLS: Background discovery failed: {e}")
+        _cached_all_tools = aries_core_tools
+
+
+async def get_extended_aries_tools() -> list[Any]:
+    """Retrieves only the dynamically discovered MCP tools."""
+    from app.services.aries.pipeline.mcp_tools import get_mcp_tools
+    return await get_mcp_tools()
 
 
 async def get_full_aries_tools() -> list[Any]:
@@ -132,10 +225,17 @@ async def get_full_aries_tools() -> list[Any]:
     Returns:
         List[Any]: A complete list of all internal and external (MCP) tools.
     """
-    from app.services.aries.pipeline.mcp_tools import get_mcp_tools
+    global _cached_all_tools, _loading_task
+    
+    if _cached_all_tools is not None:
+        return list(_cached_all_tools)
 
-    mcp_tools = await get_mcp_tools()
-    return aries_core_tools + mcp_tools
+    if _loading_task is None:
+        _loading_task = asyncio.create_task(preload_aries_tools())
+    
+    # Wait for the task if it's already running
+    await _loading_task
+    return list(_cached_all_tools or aries_core_tools)
 
 
 # Legacy support for synchronous registries

@@ -32,6 +32,100 @@ class AriesService:
         self.tts = tts_adapter
         self.actions = action_trigger
 
+    async def process_text_interaction(
+        self,
+        text_input: str,
+        session_id: str,
+        skill_id: str = "aries-default",
+        code_context: str = "",
+        username: str = "anonymous",
+    ) -> AsyncGenerator[VoiceResponse, None]:
+        """Handles a discrete text interaction loop, bypassing STT and TTS.
+
+        Args:
+            text_input (str): The raw text input from the user.
+            session_id (str): The unique identifier for the user's active session.
+            skill_id (str): The specific Aries skill/persona to use.
+            code_context (str): The current code in the user's editor.
+            username (str): The name of the user for personalized responses.
+
+        Yields:
+            VoiceResponse: Incremental updates containing text or actions.
+        """
+        try:
+            start_total = time.time()
+            logger.info(f"SERVICE: Starting text interaction for session {session_id}")
+
+            # 1. COGNITION: LangGraph Reasoning Loop
+            if code_context:
+                await memory_service.set_current_code(session_id, code_context)
+
+            system_prompt = self.skill_manager.get_system_prompt(
+                skill_id, code_context or ""
+            )
+
+            from langchain_core.messages import HumanMessage
+            from app.services.aries.pipeline.graph import get_aries_graph
+
+            aries_graph = await get_aries_graph()
+            graph_start = time.time()
+
+            initial_state = {
+                "messages": [HumanMessage(content=text_input)],
+                "session_id": session_id,
+                "username": username,
+                "system_prompt": system_prompt,
+            }
+
+            ai_text = ""
+            async for event in aries_graph.astream(
+                initial_state, config={"configurable": {"thread_id": session_id}}
+            ):
+                for node_name, output in event.items():
+                    if node_name == "agent":
+                        last_msg = output["messages"][-1]
+                        if (
+                            not hasattr(last_msg, "tool_calls")
+                            or not last_msg.tool_calls
+                        ):
+                            ai_text = last_msg.content
+                    elif node_name == "tools":
+                        for tool_msg in output["messages"]:
+                            content = getattr(tool_msg, "content", "")
+                            if content.startswith("SIGNAL:ACTION:"):
+                                parts = content.split(":")
+                                action = parts[2]
+                                payload = parts[3] if len(parts) > 3 else None
+                                yield VoiceResponse(
+                                    text="",
+                                    action=action,
+                                    action_payload={"slug": payload, "view": payload}
+                                    if payload
+                                    else {},
+                                )
+
+            graph_duration = time.time() - graph_start
+            if not ai_text:
+                ai_text = "I've processed your request. How else can I help?"
+
+            yield VoiceResponse(text=ai_text)
+
+            # Record interaction
+            await memory_service.record_interaction(
+                session_id=session_id,
+                username=username,
+                user_msg=text_input,
+                ai_msg=ai_text,
+                skill_id=skill_id,
+            )
+
+            total_duration = time.time() - start_total
+            logger.info(f"SERVICE: Total text interaction took {total_duration:.2f}s")
+
+        except Exception:
+            logger.exception("SERVICE_ERROR: Fatal failure in text interaction")
+            yield VoiceResponse(text="I'm sorry, I encountered an internal error.")
+
     async def process_voice_interaction(
         self,
         audio_bytes: bytes,
@@ -93,12 +187,6 @@ class AriesService:
             system_prompt = self.skill_manager.get_system_prompt(
                 skill_id, code_context or ""
             )
-            system_prompt += (
-                "\n\nCRITICAL: You are an autonomous agent with ZERO initial context "
-                "in your prompt. You MUST use your tools (get_recent_history, "
-                "get_current_state, search_memory_palace) to see what is happening. "
-                "Never guess about the user's state or code."
-            )
 
             from langchain_core.messages import HumanMessage
 
@@ -129,7 +217,21 @@ class AriesService:
                         ):
                             ai_text = last_msg.content
                     elif node_name == "tools":
-                        logger.info("GRAPH: Autonomous tool execution completed.")
+                        # Detect UI signals from tool execution results
+                        for tool_msg in output["messages"]:
+                            content = getattr(tool_msg, "content", "")
+                            if content.startswith("SIGNAL:ACTION:"):
+                                parts = content.split(":")
+                                action = parts[2]
+                                payload = parts[3] if len(parts) > 3 else None
+                                logger.info(f"GRAPH: Intercepted UI signal - {action}")
+                                yield VoiceResponse(
+                                    text="",
+                                    action=action,
+                                    action_payload={"slug": payload, "view": payload}
+                                    if payload
+                                    else {},
+                                )
 
             graph_duration = time.time() - graph_start
             logger.info(f"GRAPH: Reasoning loop finished in {graph_duration:.2f}s")
@@ -137,28 +239,20 @@ class AriesService:
             if not ai_text:
                 ai_text = "I've processed your request. How else can I help?"
 
-            # 3. ACTION DISPATCHING (Backward Compatibility)
-            # Many actions are now tools in the graph, but some UI-only triggers remain.
-            action_data = self.actions.parse_action(ai_text)
-
-            # Yield the final text and any parsed actions
-            yield VoiceResponse(
-                text=ai_text,
-                action=action_data["action"] if action_data else None,
-                action_payload=action_data["payload"] if action_data else None,
-            )
+            # 4. YIELD FINAL RESPONSE
+            # No longer using parse_action regex. It's all tool-driven now.
+            yield VoiceResponse(text=ai_text)
 
             # 4. MOTOR OUTPUT: Text-to-Speech
             logger.info("TTS: Generating audio for response...")
+            audio_b64_out = None
             try:
                 audio_bytes_out = await self.tts.speak(ai_text)
                 audio_b64_out = base64.b64encode(audio_bytes_out).decode("utf-8")
             except Exception as tts_err:
-                logger.error(f"TTS_ERROR: Failed to generate audio: {tts_err}")
-                audio_b64_out = None
+                logger.warning(f"TTS_WARNING: Failed to generate audio: {tts_err}")
 
             # 5. MEMORY CONSOLIDATION
-            # Record the interaction for long-term recall and contextual continuity.
             await memory_service.record_interaction(
                 session_id=session_id,
                 username=username,
@@ -167,20 +261,15 @@ class AriesService:
                 skill_id=skill_id,
             )
 
-            # If the response triggered a manual fact recording action
-            if action_data and action_data["action"] == "RECORD_FACT":
-                payload = action_data["payload"]
-                await memory_service.record_user_fact(
-                    username=username,
-                    concept=payload["concept"],
-                    value=payload["value"],
-                )
-
-            # Yield the final audio chunk
-            yield VoiceResponse(text="", audio_chunk=audio_b64_out)
+            # Yield the final audio chunk if available
+            if audio_b64_out:
+                yield VoiceResponse(text="", audio_chunk=audio_b64_out)
 
             total_duration = time.time() - start_total
-            logger.info(f"SERVICE: Total voice pipeline took {total_duration:.2f}s")
+            logger.info(
+                f"SERVICE: Total text turn took {total_duration:.2f}s "
+                f"(Graph: {graph_duration:.2f}s)"
+            )
 
         except Exception:
             logger.exception(
@@ -209,7 +298,12 @@ class AriesService:
         try:
             # Get the skill's system prompt
             system_prompt = self.skill_manager.get_system_prompt(skill_id, "")
-            system_prompt += "\n\nCRITICAL: Give a warm greeting. Ask what problem they'd like to solve or what topic they want to practice. Keep it short - max 1-2 sentences. End with a question."
+            system_prompt += (
+                "\n\nCRITICAL: Give a warm, high-energy greeting. "
+                "Mention you're ready to dive into some code. "
+                "Ask if they want to work on a specific problem or just practice a concept. "
+                "Keep it under 20 words. End with a punchy question."
+            )
 
             # Get current problem context from Redis
             problem = await aries_redis.get_current_problem(session_id)
@@ -227,8 +321,8 @@ class AriesService:
             ai_text = (
                 response.strip() if isinstance(response, str) else str(response).strip()
             )
-
-            logger.info(f"SERVICE: LLM generated welcome: {ai_text[:50]}...")
+            # Yield the greeting text immediately
+            yield VoiceResponse(text=ai_text)
 
             # Generate TTS audio
             try:
@@ -237,7 +331,7 @@ class AriesService:
                 yield VoiceResponse(text="", audio_chunk=audio_b64)
                 logger.info(f"SERVICE: TTS audio sent ({len(audio_bytes)} bytes)")
             except Exception as e:
-                logger.error(f"SERVICE_ERROR: TTS generation failed: {e}")
+                logger.warning(f"TTS_WARNING: Could not generate audio: {e}")
 
             # Record the greeting
             await memory_service.record_interaction(

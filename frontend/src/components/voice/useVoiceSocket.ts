@@ -10,6 +10,7 @@ interface VoiceResponse {
 }
 
 interface VoiceRequest {
+  event?: string;
   audio_chunk?: string;
   code_context?: string;
   skill_id?: string;
@@ -42,13 +43,30 @@ export const useVoiceSocket = (url: string, onAudioChunk?: (chunk: string) => vo
   };
   const sessionIdRef = useRef<string>(getSessionId());
   const usernameRef = useRef<string>(localStorage.getItem('aries_username') || 'anonymous');
+  const messageQueueRef = useRef<string[]>([]);
+
+  const wasIntentionallyClosedRef = useRef(false);
+  const isConnectingRef = useRef(false);
 
   const connect = useCallback(() => {
+    if (socketRef.current && (socketRef.current.readyState === WebSocket.OPEN || socketRef.current.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = undefined;
+    }
+
+    isConnectingRef.current = true;
+    wasIntentionallyClosedRef.current = false;
+
     const ws = new WebSocket(url);
     socketRef.current = ws;
 
     ws.onopen = () => {
       console.log('Voice WebSocket connected');
+      isConnectingRef.current = false;
       setIsConnected(true);
       
       // Initialize session state on backend
@@ -56,6 +74,12 @@ export const useVoiceSocket = (url: string, onAudioChunk?: (chunk: string) => vo
           session_id: sessionIdRef.current,
           username: usernameRef.current
       }));
+
+      // Flush queued messages
+      while (messageQueueRef.current.length > 0) {
+        const msg = messageQueueRef.current.shift();
+        if (msg) ws.send(msg);
+      }
     };
 
     ws.onmessage = (event) => {
@@ -87,39 +111,56 @@ export const useVoiceSocket = (url: string, onAudioChunk?: (chunk: string) => vo
     };
 
     ws.onclose = () => {
-      console.log('Voice WebSocket disconnected - will reconnect');
+      console.log('Voice WebSocket disconnected');
+      isConnectingRef.current = false;
       setIsConnected(false);
-      // Clear any existing reconnect timeout before scheduling a new one
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
+      
+      if (!wasIntentionallyClosedRef.current) {
+          console.log('Scheduling reconnect in 3 seconds...');
+          if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current);
+          }
+          reconnectTimeoutRef.current = setTimeout(connect, 3000);
       }
-      console.log('Scheduling reconnect in 3 seconds...');
-      reconnectTimeoutRef.current = setTimeout(connect, 3000);
     };
 
     ws.onerror = (err) => {
-      console.error('Voice WebSocket error', err);
+      isConnectingRef.current = false;
+      // Only log as error if it's a "real" failure, not a cleanup close
+      if (!wasIntentionallyClosedRef.current) {
+          console.error('Voice WebSocket error', err);
+      }
     };
 
-    socketRef.current = ws;
     setSocket(ws);
   }, [url]);
 
   useEffect(() => {
-    connect();
+    // connect(); // Removed auto-connect on load
     return () => {
-      if (socketRef.current) socketRef.current.close();
+      if (socketRef.current) {
+        wasIntentionallyClosedRef.current = true;
+        if (socketRef.current.readyState !== WebSocket.CLOSED && socketRef.current.readyState !== WebSocket.CLOSING) {
+            socketRef.current.close();
+        }
+      }
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
     };
   }, [connect]);
 
   const sendVoiceRequest = useCallback((request: VoiceRequest) => {
+    const msg = JSON.stringify({
+      ...request,
+      session_id: sessionIdRef.current,
+      username: usernameRef.current
+    });
+
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({
-        ...request,
-        session_id: sessionIdRef.current,
-        username: usernameRef.current
-      }));
+      console.log('useVoiceSocket: [SENDING] ', request.event || 'METADATA');
+      socketRef.current.send(msg);
+    } else {
+      console.warn('useVoiceSocket: [QUEUING] ', request.event || 'METADATA', 'state:', socketRef.current?.readyState);
+      messageQueueRef.current.push(msg);
     }
   }, []);
 
@@ -140,8 +181,10 @@ export const useVoiceSocket = (url: string, onAudioChunk?: (chunk: string) => vo
     sendVoiceChunk,
     setAiResponse,
     aiResponse,
-    socket: socketRef.current,
+    socket,
+    socketRef,
     sessionId: sessionIdRef.current,
-    username: usernameRef.current
+    username: usernameRef.current,
+    connect
   };
 };

@@ -221,49 +221,40 @@ class MemoryService:
         query: str = "",
         skill_id: str = "aries-default",
     ) -> dict[str, Any]:
-        """Assembles the complete cognitive context for the reasoning engine.
-
-        This method performs a cross-tier retrieval to build a unified 'mind'
-        for the agent. It includes:
-        - Redis: Conversation history and editor state.
-        - MongoDB: Recent code results and system events.
-        - ChromaDB: Semantic user facts and problem summaries.
-
-        Args:
-            session_id (str): The unique session ID.
-            username (str): The user's name.
-            query (str): The user's latest query (used for semantic RAG).
-            skill_id (str): The active skill persona.
-
-        Returns:
-            Dict[str, Any]: A rich dictionary containing all retrieval results.
+        """Assembles a compact cognitive context for fast reasoning.
+        
+        For voice/text interactions, we limit the context to stay within
+        latency and token budgets (e.g., TPM/RPM limits).
         """
         # 1. RETRIEVE HOT CONTEXT (Sensory)
+        # Limit history to top 10 messages to save tokens
         history = await aries_redis.get_context(session_id)
+        history = history[-10:] if history else []
+        
         current_code = await aries_redis.get_current_code(session_id)
+        if current_code and len(current_code) > 5000:
+            current_code = current_code[:5000] + "\n... (code truncated for latency)"
+        
         current_problem = await aries_redis.get_current_problem(session_id)
 
-        # 2. RETRIEVE EPISODIC CONTEXT (Logs)
+        # 2. RETRIEVE EPISODIC CONTEXT (Slimmed)
+        # Only take the single latest code result and episode
         code_results = await aries_mongo.get_recent_code_sessions(
-            username, session_id, limit=2
+            username, session_id, limit=1
         )
-        episodes = await aries_mongo.get_recent_episodes(username, limit=3)
+        episodes = await aries_mongo.get_recent_episodes(username, limit=1)
 
-        # 3. RETRIEVE SEMANTIC CONTEXT (Memory Palace)
+        # 3. SEMANTIC CONTEXT (Restricted)
         user_facts = []
-        semantic_hits = []
         if query:
             user_facts = await chroma_manager.similarity_search(
                 collection_name="user_memory",
                 query=query,
-                limit=5,
+                limit=2,  # Reduced from 5
                 filter={"username": username},
             )
-            semantic_hits = await chroma_manager.similarity_search(
-                collection_name="knowledge_base", query=query, limit=3
-            )
 
-        # 4. PROBLEM HYBRID LOGIC
+        # 4. PROBLEM SUMMARY
         problem_summary = None
         if current_problem and current_problem.get("slug"):
             slug = current_problem["slug"]
@@ -276,26 +267,15 @@ class MemoryService:
             if summaries:
                 problem_summary = summaries[0]["content"]
 
-        # 5. DYNAMIC DATA: Daily Challenge Fetch (Proactive Context)
-        daily_challenge = None
-        try:
-            from app.api.mcp.router import daily_challenge_cache
-
-            if daily_challenge_cache:
-                daily_challenge = daily_challenge_cache.get("data")
-        except Exception as e:
-            logger.debug(f"MEMORY: Daily challenge cache lookup failed: {e}")
-
         return {
             "history": history,
             "current_code": current_code,
             "current_problem": current_problem,
             "problem_summary": problem_summary,
             "code_results": code_results,
-            "semantic_knowledge": semantic_hits,
-            "daily_challenge": daily_challenge,
             "episodes": episodes,
             "user_facts": user_facts,
+            "semantic_knowledge": [], # Disable for now to save latency
         }
 
 

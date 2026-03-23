@@ -6,6 +6,7 @@ the lifecycle of core infrastructure components (Redis, MongoDB) through
 the FastAPI lifespan context manager.
 """
 
+import asyncio
 import logging
 import sys
 from collections.abc import AsyncGenerator
@@ -20,8 +21,10 @@ from app.api.mcp.router import preload_problems
 from app.api.mcp.router import router as mcp_router
 from app.api.user.router import router as user_router
 from app.core.config import settings
+from app.infrastructure.aries.chroma_client import chroma_manager
 from app.infrastructure.aries.mongo_client import aries_mongo
 from app.infrastructure.aries.redis_client import aries_redis
+from app.services.aries.memory import memory_service
 
 # Configure global logging with premium formatting
 logging.basicConfig(
@@ -44,11 +47,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app (FastAPI): The application instance.
     """
     # --- STARTUP PHASE ---
-    logger.info("MAIN: Initializing Aries Core Infrastructure...")
+    logger.info("MAIN: Initializing infrastructure...")
     try:
         await aries_redis.connect()
-        await aries_mongo.connect()
-        logger.info("MAIN: Successfully connected to persistence layers.")
+        # ChromaManager and MemoryService are self-initializing or stateless
+        logger.info("MAIN: Successfully connected to Redis.")
+
+        # Pre-warm tool discovery in background to reduce first-message latency
+        from app.services.aries.pipeline.tools import preload_aries_tools
+        asyncio.create_task(preload_aries_tools())
     except Exception as e:
         logger.error(f"MAIN: Failed to initialize infrastructure: {e}")
 

@@ -157,8 +157,9 @@ async def aries_websocket(websocket: WebSocket) -> None:
             elif "bytes" in message:
                 chunk_size = len(message["bytes"])
                 state["audio_buffer"] += message["bytes"]
+                magic = message["bytes"][:10].hex()
                 logger.info(
-                    f"ROUTER: Received audio chunk ({chunk_size}B). Total buffer: {len(state['audio_buffer'])}B"
+                    f"ROUTER: Received audio chunk ({chunk_size}B). Magic: {magic}. Total: {len(state['audio_buffer'])}B"
                 )
             else:
                 # Log unknown message type for debugging

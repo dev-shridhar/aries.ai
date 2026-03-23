@@ -1,46 +1,34 @@
-"""Unit tests for the TTSAdapter pipeline service.
-
-These tests verify the Deepgram Aura Text-to-Speech integration,
-ensuring successful audio generation and proper handling of
-API errors using httpx mocks.
-"""
-
-from unittest.mock import MagicMock, patch
-
-import httpx
 import pytest
-
+from unittest.mock import AsyncMock, MagicMock, patch
+import httpx
 from app.services.aries.pipeline.tts import TTSAdapter
 
+@pytest.fixture
+def tts_adapter():
+    return TTSAdapter()
 
 @pytest.mark.asyncio
-async def test_speak_success():
-    """Verify successful audio generation from text."""
-    adapter = TTSAdapter()
-    mock_content = b"fake-wav-data"
+async def test_speak_success(tts_adapter):
+    mock_audio = b"fake-audio-bytes"
+    
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.status_code = 200
+    mock_response.content = mock_audio
+    mock_response.raise_for_status = MagicMock()
 
-    with patch("httpx.AsyncClient.post") as mock_post:
-        mock_response = MagicMock()
-        mock_response.content = mock_content
-        mock_response.raise_for_status = MagicMock()
-        mock_post.return_value = mock_response
+    mock_client = MagicMock(spec=httpx.AsyncClient)
+    mock_client.post = AsyncMock(return_value=mock_response)
 
-        result = await adapter.speak("Hello")
-        assert result == mock_content
-        mock_post.assert_called_once()
-
+    with patch("app.infrastructure.shared_client.shared_http_client.get_client", return_value=mock_client):
+        result = await tts_adapter.speak("Hello")
+        assert result == mock_audio
+        mock_client.post.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_speak_failure():
-    """Verify that HTTP errors are propagated."""
-    adapter = TTSAdapter()
+async def test_speak_failure(tts_adapter):
+    mock_client = MagicMock(spec=httpx.AsyncClient)
+    mock_client.post = AsyncMock(side_effect=httpx.HTTPStatusError("Error", request=MagicMock(), response=MagicMock()))
 
-    with patch("httpx.AsyncClient.post") as mock_post:
-        mock_response = MagicMock()
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            message="Forbidden", request=MagicMock(), response=mock_response
-        )
-        mock_post.return_value = mock_response
-
+    with patch("app.infrastructure.shared_client.shared_http_client.get_client", return_value=mock_client):
         with pytest.raises(httpx.HTTPStatusError):
-            await adapter.speak("Hello")
+            await tts_adapter.speak("Hello")

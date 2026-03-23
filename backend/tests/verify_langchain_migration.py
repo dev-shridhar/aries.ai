@@ -37,46 +37,40 @@ async def test_langchain_flow():
         {"title": "Fibonacci Number", "slug": "fibonacci-number", "difficulty": "Easy"},
     )
 
-    print("\n--- PHASE 1: TESTING WELCOME FLOW ---")
+    print("\n--- PHASE 1: WELCOME ---")
     async for response in aries_service.process_welcome_interaction(
         session_id, username
     ):
         if response.text:
-            print(f"Aries: {response.text}", end="")
+            print(f"Aries: {response.text}")
     print("\n")
 
-    print("--- PHASE 2: TESTING ZERO-STUFFING REASONING ---")
-    print("User: 'What problem am I looking at and what is the current code?'")
+    print("--- PHASE 2: DISCOVERY (User is weak at Binary Search) ---")
+    print("User: 'Hey Aries, I am weak at binary search.'")
 
-    initial_state = {
-        "messages": [
-            HumanMessage(
-                content="What problem am I looking at and what is the current code?"
-            )
-        ],
-        "session_id": session_id,
-        "username": username,
-        "system_prompt": "You are Aries, a coding companion. You have ZERO initial context about the user's code or problem. You MUST call your tools (get_current_state, get_recent_history) to see what the user is talking about. Do not guess.",
-    }
-
-    print("\nGraph Execution Trace:")
-    async for event in aries_graph.astream(
-        initial_state, config={"configurable": {"thread_id": session_id}}
+    # We use process_text_interaction to see the full service logic
+    async for response in aries_service.process_text_interaction(
+        text_input="Hey Aries, I am weak at binary search.",
+        session_id=session_id,
+        username=username
     ):
-        for node, output in event.items():
-            print(f"\n[Node: {node}]")
-            if "messages" in output:
-                last_msg = output["messages"][-1]
-                # Check for AIMessage tool calls
-                if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
-                    for tc in last_msg.tool_calls:
-                        print(f"  >>> CALLING TOOL: {tc['name']}({tc['args']})")
-                # Check for ToolMessage (results)
-                elif hasattr(last_msg, "tool_call_id"):
-                    print(f"  <<< TOOL RESULT: {last_msg.content[:100]}...")
-                # Normal AIMessage content
-                elif last_msg.content:
-                    print(f"  <<< RESPONSE: {last_msg.content}")
+        if response.text:
+            print(f"Aries: {response.text}")
+        if response.action:
+            print(f"  >>> SIGNAL TO UI: {response.action} ({response.action_payload})")
+
+    print("\n--- PHASE 3: ACTION (User selects a problem) ---")
+    print("User: 'Load the standard Binary Search problem for me.'")
+
+    async for response in aries_service.process_text_interaction(
+        text_input="Load the standard Binary Search problem for me.",
+        session_id=session_id,
+        username=username
+    ):
+        if response.text:
+            print(f"Aries: {response.text}")
+        if response.action:
+            print(f"  >>> SIGNAL TO UI: {response.action} ({response.action_payload})")
 
     # 3. Cleanup
     await aries_redis.disconnect()
