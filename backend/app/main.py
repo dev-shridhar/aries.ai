@@ -57,7 +57,7 @@ async def voice_ws(ws: WebSocket):
                     history = await chat_store.get_history(state["session_id"])
                     reply = await pipeline.brain(
                         "Introduce yourself briefly and ask how you can help.",
-                        "You are Aries, a DSA tutor. Be concise (1-2 sentences).",
+                        pipeline.system,
                         history,
                     )
                     audio = await pipeline.tts(reply)
@@ -68,7 +68,7 @@ async def voice_ws(ws: WebSocket):
                     if not state["audio"]:
                         continue
                     history = await chat_store.get_history(state["session_id"])
-                    text, reply, audio = await pipeline.process(state["audio"], "You are Aries, a DSA tutor. Be concise.", history)
+                    text, reply, audio = await pipeline.process(state["audio"], pipeline.system, history)
                     await chat_store.add_turn(state["session_id"], "user", text)
                     await chat_store.add_turn(state["session_id"], "assistant", reply)
                     await ws.send_json({"text": reply, "audio": base64.b64encode(audio).decode()})
