@@ -101,8 +101,7 @@ async def search_problems(q: str = "", difficulty: str = "", limit: int = 20):
 async def get_problem(slug: str):
     """Get problem details by slug."""
     from app.leetcode_mcp import get_problem
-    data = await get_problem(slug)
-    problem = data.get("problem", data)
+    problem = await get_problem(slug)
     if not problem:
         return {"error": "not found"}
     return problem
@@ -120,37 +119,53 @@ async def run_code(body: dict):
         return {"results": [{"error": "Missing code or slug"}]}
 
     from app.leetcode_mcp import get_problem
-    data = await get_problem(slug)
-    problem = data.get("problem", data)
-    examples = problem.get("exampleTestcases", "") if not examples else examples
+    problem = await get_problem(slug)
+    examples = problem.get("examples", "") if not examples else examples
+    expected = problem.get("expected", []) if not expected else expected
 
     if not examples:
         return {"results": [{"error": "No test cases found"}]}
 
-    lines = [l for l in examples.split("\n") if l.strip()]
+    lines = [l.rstrip("\r") for l in examples.split("\n") if l.strip()]
     results = []
     driver_imports = "from typing import *\nfrom collections import *\nfrom heapq import *\nfrom bisect import *\nimport math\nimport json\n\n"
 
-    for i, line in enumerate(lines):
+    stub = problem.get("stub", "")
+    # determine arity from stub signature (params after self)
+    paren = stub.split("(")
+    if len(paren) > 1:
+        sig = paren[1].split(")")[0]
+        params = [p.strip() for p in sig.split(",") if p.strip() and p.strip() != "self"]
+        arity = max(1, len(params))
+    else:
+        arity = 1
+
+    groups = [lines[i:i+arity] for i in range(0, len(lines), arity)]
+
+    for i, group in enumerate(groups):
+        args_code = ", ".join(f"json.loads({json.dumps(a)})" for a in group)
+        exp_val = expected[i] if i < len(expected) else None
+        exp_code = f"json.loads({json.dumps(exp_val)})" if exp_val else None
+
         driver = driver_imports + code + f"""
 
 import inspect
 sol = Solution()
-method = [m for m in inspect.getmembers(sol, predicate=inspect.ismethod) if not m[0].startswith('__')][0][1]
+method = [m for m in inspect.getmembers(sol, predicate=inspect.ismethod) if not m[0].startswith("__")][0][1]
 try:
-    inp = json.loads({json.dumps(line)})
-    out = method(inp) if not isinstance(inp, list) else method(*inp if isinstance(inp, list) else [inp])
-    exp = json.loads({json.dumps(expected[i] if i < len(expected) else "null")}) if i < len(expected) else None
+    args = [{args_code}]
+    out = method(*args)
+    exp = {exp_code or "None"}
     passed = json.dumps(out, sort_keys=True) == json.dumps(exp, sort_keys=True) if exp is not None else True
-    print(json.dumps({{"input": {json.dumps(line)}, "output": json.dumps(out), "expected": json.dumps(exp), "passed": passed}}))
+    print(json.dumps({{"input": {json.dumps(group)}, "output": out, "expected": exp, "passed": passed}}, default=str))
 except Exception as e:
-    print(json.dumps({{"input": {json.dumps(line)}, "error": str(e), "passed": False}}))
+    print(json.dumps({{"input": {json.dumps(group)}, "error": str(e), "passed": False}}))
 """
         result = await run_python(driver)
         try:
             parsed = json.loads(result["stdout"].strip())
             results.append(parsed)
         except (json.JSONDecodeError, ValueError):
-            results.append({"input": line, "error": result["stderr"][:200], "passed": False})
+            results.append({"input": group, "error": result["stderr"][:200], "passed": False})
 
     return {"results": results}
