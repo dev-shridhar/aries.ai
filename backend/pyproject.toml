@@ -11,4 +11,5 @@ dependencies = [
     "deepgram-sdk>=6.0.1",
     "pydantic-settings>=2.13.1",
     "websockets>=14.0",
+    "mcp>=1.26.0",
 ]
