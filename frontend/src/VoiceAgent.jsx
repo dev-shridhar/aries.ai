@@ -18,7 +18,8 @@ function VoiceAgent({ currentCode }) {
   useEffect(() => { activeRef.current = active }, [active])
 
   useEffect(() => {
-    const ws = new WebSocket(`ws://${location.hostname}:8000/ws`)
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const ws = new WebSocket(`${proto}//${location.host}/ws`)
     ws.onopen = () => {
       ws.send(JSON.stringify({ session_id: sidRef.current }))
     }

@@ -4,8 +4,11 @@ import json
 import logging
 from contextlib import asynccontextmanager
 
+import os
+from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from app.config import settings
 from app.chat_store import chat_store
@@ -22,6 +25,8 @@ async def lifespan(app: FastAPI):
     yield
     await chat_store.disconnect()
 
+
+_FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 app = FastAPI(title="aries.ai", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -77,7 +82,10 @@ async def voice_ws(ws: WebSocket):
     except Exception:
         logger.exception("ws error")
     finally:
-        await ws.close()
+        try:
+            await ws.close()
+        except Exception:
+            pass
 
 
 # ── REST Endpoints ──
@@ -169,3 +177,21 @@ except Exception as e:
             results.append({"input": group, "error": result["stderr"][:200], "passed": False})
 
     return {"results": results}
+
+
+# ── SPA catch-all ──
+
+@app.get("/", include_in_schema=False)
+async def spa_root():
+    index = _FRONTEND_DIR / "index.html"
+    return FileResponse(str(index)) if index.exists() else {"error": "frontend not built"}
+
+@app.get("/{path:path}", include_in_schema=False)
+async def spa(path: str):
+    file = _FRONTEND_DIR / path
+    if file.exists() and file.is_file():
+        return FileResponse(str(file))
+    index = _FRONTEND_DIR / "index.html"
+    if not index.exists():
+        return {"error": "frontend not built"}
+    return FileResponse(str(index))
