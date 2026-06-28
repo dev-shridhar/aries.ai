@@ -1,7 +1,7 @@
 import base64
 import logging
 from groq import AsyncGroq
-from deepgram import DeepgramClient, PrerecordedOptions
+from deepgram import DeepgramClient
 import httpx
 
 from app.config import settings
@@ -12,12 +12,11 @@ logger = logging.getLogger(__name__)
 class VoicePipeline:
     def __init__(self):
         self.groq = AsyncGroq(api_key=settings.GROQ_API_KEY)
-        self.deepgram = DeepgramClient(settings.DEEPGRAM_API_KEY)
+        self.deepgram = DeepgramClient(api_key=settings.DEEPGRAM_API_KEY)
 
     async def stt(self, audio: bytes) -> str:
-        options = PrerecordedOptions(model="nova-2", smart_format=True)
-        response = await self.deepgram.listen.asyncrest.v("1").transcribe_file(
-            {"buffer": audio}, options
+        response = await self.deepgram.listen.v1.media.transcribe_file(
+            request=audio, model="nova-2", smart_format=True
         )
         return response.results.channels[0].alternatives[0].transcript or ""
 
